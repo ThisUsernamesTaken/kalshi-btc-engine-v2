@@ -1,4 +1,4 @@
-# Install all four kalshi-btc-engine-v2 components as Windows services
+# Install all five kalshi-btc-engine-v2 components as Windows services
 # via NSSM. Run from an elevated PowerShell.
 #
 # Services installed:
@@ -6,9 +6,14 @@
 #   KalshiPaperEngine   - live_paper.py with hold_to_settle_pure preset
 #   KalshiPaperTA       - live_paper_ta.py with bitstamp venue
 #   KalshiLiveTA        - live_ta.py REAL MONEY (10 contracts/trade)
+#   KalshiLadderShadow  - live_ladder_shadow.py SHADOW DCA observer
+#                         (reads live trade log, observes contract prices,
+#                          logs what a confirmation-driven add ladder would
+#                          have done — never places real orders)
 #
 # Each service auto-restarts on exit with a 5-second delay. Paper/live
 # traders depend on KalshiCapture so they start in the right order.
+# Ladder shadow depends on KalshiLiveTA so it has fills to observe.
 #
 # To uninstall: `nssm remove <service> confirm` for each.
 
@@ -107,11 +112,25 @@ Install-NssmService `
     -DependsOn "KalshiCapture" `
     -Description "Kalshi BTC engine v2 Pine Script LIVE trader (REAL MONEY)"
 
+# ---- KalshiLadderShadow: confirmation-driven DCA observer (shadow only) ----
+# Tails KalshiLiveTA's trade log, observes contract prices in the capture
+# DB, simulates a 4-condition rung ladder, and logs would-add events plus
+# counterfactual settlement P&L. Has NO Kalshi client — cannot place orders.
+Install-NssmService `
+    -Name "KalshiLadderShadow" `
+    -Exe $PY `
+    -AppArgs "$ENGINE\scripts\live_ladder_shadow.py --db `"$DB`" --live-trade-log `"$DATA\live_ta_trades.jsonl`" --shadow-log `"$DATA\ladder_shadow.jsonl`" --poll-interval-s 2 --status-every-s 60" `
+    -Stdout "$DATA\svc_ladder_shadow.stdout.log" `
+    -Stderr "$DATA\svc_ladder_shadow.stderr.log" `
+    -DependsOn "KalshiLiveTA" `
+    -Description "Kalshi BTC engine v2 ladder-DCA shadow observer (no orders)"
+
 Write-Host ""
-Write-Host "All four services installed."
+Write-Host "All five services installed."
 Write-Host ""
 Write-Host "Status check:"
 & $NSSM status KalshiCapture
 & $NSSM status KalshiPaperEngine
 & $NSSM status KalshiPaperTA
 & $NSSM status KalshiLiveTA
+& $NSSM status KalshiLadderShadow

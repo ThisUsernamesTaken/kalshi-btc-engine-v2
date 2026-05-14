@@ -31,11 +31,13 @@ foreach ($s in "KalshiCapture","KalshiPaperEngine","KalshiPaperTA","KalshiLiveTA
 | `KalshiPaperEngine` | Engine v2 paper with `hold_to_settle_pure` preset | `data/svc_paper_engine.{stdout,stderr}.log` |
 | `KalshiPaperTA` | Pine Script PAPER trader | `data/svc_paper_ta.{stdout,stderr}.log` |
 | **`KalshiLiveTA`** | **Pine Script LIVE trader (REAL MONEY)** | `data/svc_live_ta.{stdout,stderr}.log` |
+| `KalshiLadderShadow` | Ladder-DCA observer (SHADOW only, no Kalshi client wired) | `data/svc_ladder_shadow.{stdout,stderr}.log` |
 
 Decision logs (where the actual trade data lives):
 - `data/paper_holdpure_2026_05_12.jsonl` — engine v2 paper decisions + TA sidecar
 - `data/paper_ta_2026_05_12.jsonl` — Pine Script paper fills/settles
 - **`data/live_ta_trades.jsonl`** — **LIVE trader: orders, fills, settles, halts**
+- `data/ladder_shadow.jsonl` — would-add ladder events + counterfactual settlement P&L
 
 `RUNNING.md` has the full operational details, NSSM commands, restart
 procedures, hard-cap constants, and reboot history. **Read it before

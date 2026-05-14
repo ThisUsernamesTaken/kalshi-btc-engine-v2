@@ -46,6 +46,7 @@ reason. The `KalshiCapture` service is the dependency for the other three
 | `KalshiPaperEngine` | `live_paper.py --preset hold_to_settle_pure --bankroll 20` | `data/svc_paper_engine.{stdout,stderr}.log` |
 | `KalshiPaperTA` | `live_paper_ta.py --venue bitstamp --base-stake 1` | `data/svc_paper_ta.{stdout,stderr}.log` |
 | **`KalshiLiveTA`** | **`live_ta.py --venue bitstamp` (REAL MONEY)** | `data/svc_live_ta.{stdout,stderr}.log` |
+| `KalshiLadderShadow` | `live_ladder_shadow.py` — confirmation-driven DCA observer (SHADOW only, no Kalshi client) | `data/svc_ladder_shadow.{stdout,stderr}.log` |
 
 The python PIDs change on each restart (NSSM-managed). To find the current
 PIDs: `Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Sort CreationDate`.
@@ -85,6 +86,43 @@ restarted service will NOT re-enter cycles it already attempted.
 
 Docstring at top of `live_ta.py` still says "2 contracts / $10 cap" — this
 is stale documentation, NOT the actual behavior. Constants are authoritative.
+
+## KalshiLadderShadow (confirmation-driven add-ladder simulator)
+
+**Read-only against the capture DB + `live_ta_trades.jsonl`. Writes to
+`data/ladder_shadow.jsonl`. Has NO Kalshi client — cannot place real
+orders even if buggy.**
+
+Logic (in `scripts/live_ladder_shadow.py`):
+
+1. Tails new `fill` records from `live_ta_trades.jsonl` and starts
+   tracking each as an open position.
+2. While the position is open, polls the capture DB every 2s for the
+   latest L2 ask/bid for that ticker, the latest spot mid, and the
+   top-5 depth on the position's side.
+3. Evaluates four conditions for each open position:
+   - **Thin liquidity** — `top5_depth < THIN_DEPTH_CAP (200)`
+   - **Near strike** — `|spot − strike| / strike < NEAR_STRIKE_FRAC (0.05%)`
+   - **Stabilized** — stddev of contract mid over last 10s < `STABILIZED_STD_CENTS (2.0)`
+   - **Adverse trigger** — current ask must be ≥ `ADVERSE_TRIGGER_CENTS (5)` below entry
+4. When all four fire AND the ladder is `idle`, "places" a shadow rung at
+   `current_ask + LADDER_LIFT_CENTS (2)`, logs `would_add`, transitions to `waiting`.
+5. After `LADDER_HOLD_SECONDS (10)`, checks the current ask:
+   - If `current_ask ≥ rung_price` → log `rung_held`, return to `idle` (can add another rung if conditions persist).
+   - Else → log `rung_failed`, transition to `stopped` (no more rungs for this position).
+6. Hard cap: `MAX_RUNGS_PER_POSITION = 3` rungs per open position.
+7. At settlement (lifecycle determined), emits `settle_with_ladder` with:
+   - `actual_net_cents` — live trader's actual outcome
+   - `ladder_net_cents` — counterfactual P&L if every shadow rung had been a real fill
+   - `combined_net_cents = actual + ladder`
+   - `delta_vs_actual_cents = ladder_net_cents` — how much the ladder would have improved (+) or worsened (−) the live position
+
+Adjusting thresholds: edit the module constants at the top of
+`scripts/live_ladder_shadow.py` and restart the service:
+`& $NSSM restart KalshiLadderShadow`.
+
+Session-bias reversal heuristic is NOT yet gating — needs more data on
+predictive value before being added to the four-condition AND.
 
 ## Reboot / outage history
 
