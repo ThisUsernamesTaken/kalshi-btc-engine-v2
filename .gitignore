@@ -1,0 +1,48 @@
+# Captured market data, decision logs, service logs, real-money trade history.
+# Everything under data/ is considered sensitive and excluded.
+data/
+!data/.gitkeep
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.eggs/
+.pytest_cache/
+.pytest_tmp/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Real credentials and any local env overrides
+.env
+.env.local
+.env.*.local
+credentials/
+*.pem
+*.key
+
+# IDE / editor cruft
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+build/
+dist/
+*.spec
+
+# Local scratch — _<name>.py files at the repo root are temporary inspectors
+# we generate during analysis. They reference local data paths and should
+# not be committed.
+/_*.py
+/scratch_*.py

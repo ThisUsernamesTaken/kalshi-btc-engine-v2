@@ -1,0 +1,17 @@
+{
+  "environment": "prod",
+  "live_enabled": false,
+  "data_dir": "C:\\Trading\\kalshi-btc-engine-v2\\data",
+  "kalshi": {
+    "series_ticker": "KXBTC15M",
+    "rest_base_url_prod": "https://external-api.kalshi.com/trade-api/v2",
+    "rest_base_url_demo": "https://external-api.demo.kalshi.co/trade-api/v2",
+    "ws_url_prod": "wss://external-api-ws.kalshi.com/trade-api/ws/v2",
+    "ws_url_demo": "wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2"
+  },
+  "spot": {
+    "max_quote_age_ms": 1500,
+    "min_venues": 2,
+    "venues": ["coinbase", "kraken", "bitstamp"]
+  }
+}
