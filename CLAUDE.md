@@ -195,7 +195,7 @@ confirming what placed the last trade.
 - Setting `live_enabled: true` in `configs/default.json` (currently `false`, but `scripts/live_ta.py` bypasses this gate)
 - Setting `ENGINE_V2_LIVE=true`
 - Placing actual orders manually
-- Modifying `scripts/live_ta.py` hard-cap constants (`CONTRACTS_PER_TRADE=10`, `DAILY_LOSS_CAP_CENTS=999999`, `MIN_BALANCE_CENTS=500`) — these are intentional per user but changes require explicit re-authorization
+- Modifying `scripts/live_ta.py` sizing or hard-cap constants (`TIER_CONTRACTS` map with `STRONG=40, MEDIUM=20, WEAK=10, MIMIC=5`, `DAILY_LOSS_CAP_CENTS=999999`, `MIN_BALANCE_CENTS=500`) — these are intentional per user but changes require explicit re-authorization
 - Touching `C:\Trading\btc-bias-engine\` (used as the KalshiClient library source; do NOT modify, the live trader depends on it)
 
 **Note about `live_ta.py`'s architecture**: it does NOT route through
@@ -203,7 +203,8 @@ confirming what placed the last trade.
 gates). Instead it imports `KalshiClient` directly from
 `C:\Trading\btc-bias-engine\kalshi_client.py` and calls `place_order`
 on its own. Safety relies entirely on the hard-coded constants in
-`live_ta.py` (lines 59-64) and the per-cycle dedupe in the trade log.
+`live_ta.py` (`TIER_CONTRACTS`, `MIN_BALANCE_CENTS`, `STALE_DATA_TIMEOUT_MS`,
+etc.) and the per-cycle dedupe rebuilt from the trade log on startup.
 The `live_enabled` flag in `configs/default.json` does NOT gate this code path.
 
 ## When in doubt

@@ -70,11 +70,25 @@ re-installs each service).
 
 ## LIVE trading constants (in `scripts/live_ta.py`)
 
-Hard-coded in the script (lines 59–64) per user authorization:
+Hard-coded in the script per user authorization:
+
+### Per-tier sizing (Pine Script 4x/2x/1x/0.5x ratios)
+
+| Tier | Contracts | Rationale |
+|---|---|---|
+| `STRONG` | 40 | High-conviction signal (conf ≥ 75) — hasn't fired in live yet |
+| `MEDIUM` | 20 | Medium-conviction (conf ≥ 50) — hasn't fired yet |
+| `WEAK` | 10 | Standard signal (conf ≥ 20, default `entry_thresh`) |
+| `MIMIC` | 5 | Forced or late-phase relaxed entry — half-size for lower conviction |
+| (unrecognised tier) | 5 | Fallback = MIMIC level |
+
+Tier comes from `kalshi_btc_engine_v2.features.ta_score.TADecision.tier_name`,
+set per the Pine Script's confidence-tier classification.
+
+### Other hard caps
 
 | Constant | Value | Effect |
 |---|---|---|
-| `CONTRACTS_PER_TRADE` | 10 | Every entry is exactly 10 contracts |
 | `DAILY_LOSS_CAP_CENTS` | 999999 | Effectively disabled |
 | `MIN_BALANCE_CENTS` | 500 | Halts trading if Kalshi balance < $5 |
 | `STALE_DATA_TIMEOUT_MS` | 30_000 | Skips entry if last spot tick > 30s old |
@@ -83,9 +97,6 @@ Hard-coded in the script (lines 59–64) per user authorization:
 
 Per-cycle dedupe persists across restarts via decision-log replay. A
 restarted service will NOT re-enter cycles it already attempted.
-
-Docstring at top of `live_ta.py` still says "2 contracts / $10 cap" — this
-is stale documentation, NOT the actual behavior. Constants are authoritative.
 
 ## KalshiLadderShadow (confirmation-driven add-ladder simulator)
 

@@ -1,15 +1,23 @@
-"""Live Pine Script directional trader (2 contracts/trade, hold to settle).
+"""Live Pine Script directional trader (tier-scaled sizing, hold to settle).
 
 Mirrors ``live_paper_ta.py`` decision-for-decision but, at the point where
 the paper trader logs a paper "fill", places a real Kalshi IOC order via
 the v1 ``KalshiClient`` (RSA-PSS auth). No exit orders — binary settles
 at cycle close and we reconcile via lifecycle events, same as paper.
 
-Hard caps (cannot be overridden by flags):
-  * 2 contracts per order
-  * Daily realized-loss cap: $10 → halts further entries for the rest
-    of the UTC day. Reloaded from the trade log on startup so restarts
-    do not reset the counter.
+Per-trade contract size is now scaled by the Pine Script tier
+(STRONG/MEDIUM/WEAK/MIMIC) at the 4x/2x/1x/0.5x ratios the Pine Script
+was designed for. See TIER_CONTRACTS below — adjust by editing and
+restarting KalshiLiveTA. The previous flat ``CONTRACTS_PER_TRADE = 10``
+hardcode is replaced; rationale in HANDOFF.md (live-trader performance
+review). WEAK is the baseline 10c entry; MIMIC drops to 5c reflecting
+its lower conviction (forced or relaxed-phase entries); MEDIUM and
+STRONG would scale up to 20 and 40 if the model ever hits those tiers.
+
+Other hard caps (cannot be overridden by flags):
+  * Daily realized-loss cap: $9999.99 (effectively disabled per user).
+    Halt latches within a UTC day; resets at 00:00 UTC. Reloaded from
+    the trade log on startup so restarts do not reset the counter.
   * Min Kalshi balance: $5 → halts further entries.
   * Per-15-min-cycle dedupe (set of cycle_floor_ms persisted via the
     trade log) to survive watchdog restarts.
@@ -55,8 +63,22 @@ DEFAULT_SPOT_VENUE = "coinbase"
 CYCLE_MS = 15 * 60 * 1000
 MIN_MS = 60 * 1000
 
-# Hard safety caps. Do not parameterize.
-CONTRACTS_PER_TRADE = 10
+# Per-tier contract sizing — Pine Script's 4x/2x/1x/0.5x ratios.
+# Tier names come from kalshi_btc_engine_v2.features.ta_score.TADecision.tier_name.
+# WEAK is the standard signal at 10 contracts (matches the previous flat
+# CONTRACTS_PER_TRADE). MIMIC is forced/relaxed entries at half-size to
+# reflect lower conviction. MEDIUM/STRONG haven't fired in live trading
+# yet — if they do, exposure scales to 2x / 4x respectively.
+# Unknown tier name falls back to the MIMIC minimum.
+TIER_CONTRACTS: dict[str, int] = {
+    "STRONG": 40,
+    "MEDIUM": 20,
+    "WEAK":   10,
+    "MIMIC":   5,
+}
+MIN_TIER_CONTRACTS = 5  # fallback if tier_name is unrecognised
+
+# Other hard safety caps. Do not parameterize.
 DAILY_LOSS_CAP_CENTS = 999999
 MIN_BALANCE_CENTS = 5 * 100
 STALE_DATA_TIMEOUT_MS = 30_000
@@ -417,7 +439,8 @@ async def main_async() -> int:
         "daily_loss_cents_at_start": daily_loss_cents,
         "entered_cycles_at_start": len(entered_cycles),
         "halt_reason_at_start": halt_reason,
-        "contracts_per_trade": CONTRACTS_PER_TRADE,
+        "tier_contracts": TIER_CONTRACTS,
+        "min_tier_contracts_fallback": MIN_TIER_CONTRACTS,
         "daily_loss_cap_cents": DAILY_LOSS_CAP_CENTS,
         "min_balance_cents": MIN_BALANCE_CENTS,
         "stale_data_timeout_ms": STALE_DATA_TIMEOUT_MS,
@@ -593,7 +616,9 @@ async def main_async() -> int:
                         entry_cents = yes_ask_cents if is_call else no_ask_cents
                         order_side = "yes" if is_call else "no"
                         limit_cents = min(LIMIT_CAP_CENTS, entry_cents + SLIPPAGE_CENTS)
-                        contracts = CONTRACTS_PER_TRADE  # HARD CAP, do not parameterize
+                        contracts = TIER_CONTRACTS.get(
+                            decision.tier_name, MIN_TIER_CONTRACTS
+                        )
 
                         # Guard 5: balance check
                         try:
