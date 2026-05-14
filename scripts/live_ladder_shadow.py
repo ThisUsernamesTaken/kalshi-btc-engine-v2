@@ -82,16 +82,44 @@ def cycle_floor_ms(ts_ms: int) -> int:
 # ── Position tracking ─────────────────────────────────────────────────────
 
 class TrackedPosition:
-    """One open live position we're observing."""
+    """One open live position we're observing.
+
+    Handles both paper- and live-trader fill record schemas:
+      - paper_ta_2026_05_12.jsonl: `ts_ms`, `side` ("yes"/"no")
+      - live_ta_trades.jsonl:      `ts_minute_ms`, `decided_side` ("call"/"put")
+    """
 
     def __init__(self, fill_record: dict):
         self.ticker: str = fill_record["ticker"]
-        self.side: str = fill_record.get("side", "")           # "yes" or "no" — the side bought
+
+        # Side may be "yes"/"no" (paper) or "call"/"put" (live, decided_side field)
+        side_raw = (
+            fill_record.get("side")
+            or fill_record.get("decided_side")
+            or ""
+        )
+        if side_raw == "call":
+            self.side: str = "yes"
+        elif side_raw == "put":
+            self.side = "no"
+        else:
+            self.side = side_raw  # already "yes" or "no"
+
         self.contracts: int = int(fill_record["contracts"])
         self.entry_price_cents: int = int(fill_record["entry_price_cents"])
         self.entry_fee_cents: int = int(fill_record.get("entry_fee_cents", 0))
-        self.entry_ts_ms: int = int(fill_record["ts_ms"])
-        self.cycle_floor_ms: int = int(fill_record.get("cycle_floor_ms") or cycle_floor_ms(self.entry_ts_ms))
+
+        # Timestamp field varies by source — try all known keys
+        ts_raw = (
+            fill_record.get("ts_ms")
+            or fill_record.get("ts_minute_ms")
+            or fill_record.get("entry_ts_ms")
+            or 0
+        )
+        self.entry_ts_ms: int = int(ts_raw)
+        self.cycle_floor_ms: int = int(
+            fill_record.get("cycle_floor_ms") or cycle_floor_ms(self.entry_ts_ms)
+        )
         self.cycle_close_ms: int = int(
             fill_record.get("cycle_close_ms") or (self.cycle_floor_ms + CYCLE_MS)
         )
@@ -320,7 +348,26 @@ def main() -> int:
                 ticker = rec.get("ticker")
                 if not ticker:
                     continue
-                pos = TrackedPosition(rec)
+                # Guard against schema drift in the fill record so a bad row
+                # never crash-loops the watchdog. Log the parse failure to
+                # stderr but keep going.
+                try:
+                    pos = TrackedPosition(rec)
+                except Exception as e:  # noqa: BLE001
+                    emit({
+                        "kind": "track_open_parse_error",
+                        "ts_ms": now_ms,
+                        "ticker": ticker,
+                        "order_id": order_id,
+                        "error": repr(e),
+                        "record_keys": sorted(rec.keys()),
+                    })
+                    print(
+                        f"[ladder-shadow] PARSE ERROR ticker={ticker} order_id={order_id} "
+                        f"err={e!r}",
+                        flush=True,
+                    )
+                    continue
                 open_positions[ticker] = pos
                 emit({"kind": "track_open", "ts_ms": now_ms, **pos.to_dict()})
                 print(f"[ladder-shadow] tracking {ticker} entry={pos.entry_price_cents}c side={pos.side}", flush=True)
