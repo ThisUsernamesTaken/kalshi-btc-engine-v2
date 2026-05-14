@@ -10,8 +10,17 @@ live service, share state files, or reuse live credentials without an explicit f
 Start with **[CLAUDE.md](CLAUDE.md)** for orientation, then **[RUNNING.md](RUNNING.md)** for the
 current operational state (running processes, configs, PIDs, restart commands), and
 **[docs/AGENT_CHEATSHEET.md](docs/AGENT_CHEATSHEET.md)** for copy-pasteable diagnostic commands.
-The chronological project history is in [HANDOFF.md](HANDOFF.md). The pre-registered burn-in
-design is in [docs/EXPERIMENT_REGISTRY_2026_05_12.md](docs/EXPERIMENT_REGISTRY_2026_05_12.md).
+The chronological project history is in [HANDOFF.md](HANDOFF.md). Empirical analysis of the
+live + paper trading data is in **[docs/FINDINGS_2026_05_14.md](docs/FINDINGS_2026_05_14.md)**.
+The pre-registered burn-in design is in
+[docs/EXPERIMENT_REGISTRY_2026_05_12.md](docs/EXPERIMENT_REGISTRY_2026_05_12.md).
+
+## For setting up on another machine
+
+See **[INSTALL.md](INSTALL.md)**. Covers prerequisites, directory layout (matching the
+current production install), Python and NSSM installation, Kalshi credential placement,
+service installation via `scripts/install_services.ps1`, and verification steps. Includes a
+list of hardcoded paths to edit if you can't replicate the canonical `C:\Trading\` layout.
 
 ## Safety Defaults
 
