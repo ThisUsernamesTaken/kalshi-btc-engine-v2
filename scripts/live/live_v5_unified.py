@@ -181,7 +181,11 @@ LATE_VEL_ALIGN_FLAT_THRESHOLD_USD = 1.0  # |v60| below this is treated as FLAT
 T30_SNIPER_WINDOW_OPEN_S = 40       # window starts at T-40s
 T30_SNIPER_WINDOW_CLOSE_S = 20      # window ends at T-20s (10s tolerance per side of T-30)
 T30_SNIPER_FAV_BID_MIN = 85         # favorite-side bid floor; backtest 100% WR at this threshold
-T30_SNIPER_CONTRACTS = 10           # conservative; backtest supports 20+ but cap for safety
+T30_SNIPER_CONTRACTS = 5            # 2026-05-17 v2: lowered 10 -> 5 per literature review.
+                                    # Quarter-Kelly at Bayesian-skeptical 88% WR (overfit
+                                    # haircut + Wilson lower bound). Will scale to 10ct after
+                                    # N=10 live with <=1 loss, 20ct after N=25 with <=2.
+                                    # See STRATEGY_PARTICIPATION.md sec 11.
 T30_SNIPER_CAP_CENTS = 99           # IOC limit cap
 T30_SNIPER_SLIP_C = 2               # +2c above ask (LEADER_80PLUS tier slippage)
 
