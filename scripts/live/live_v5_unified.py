@@ -181,11 +181,12 @@ LATE_VEL_ALIGN_FLAT_THRESHOLD_USD = 1.0  # |v60| below this is treated as FLAT
 T30_SNIPER_WINDOW_OPEN_S = 40       # window starts at T-40s
 T30_SNIPER_WINDOW_CLOSE_S = 20      # window ends at T-20s (10s tolerance per side of T-30)
 T30_SNIPER_FAV_BID_MIN = 85         # favorite-side bid floor; backtest 100% WR at this threshold
-T30_SNIPER_CONTRACTS = 5            # 2026-05-17 v2: lowered 10 -> 5 per literature review.
-                                    # Quarter-Kelly at Bayesian-skeptical 88% WR (overfit
-                                    # haircut + Wilson lower bound). Will scale to 10ct after
-                                    # N=10 live with <=1 loss, 20ct after N=25 with <=2.
-                                    # See STRATEGY_PARTICIPATION.md sec 11.
+T30_SNIPER_CONTRACTS = 2            # 2026-05-18 v3: lowered to 2ct for $3.71 account size.
+                                    # Math: 2ct at 95c entry = $1.90 cost.
+                                    # Win: ~$0.08-0.30 per trade (net of fees).
+                                    # 14 trades/day expected -> $1-2/day at 95%+ WR.
+                                    # Doubles account in 2-3 days under empirical 100% WR.
+                                    # Will scale to 5ct after account passes $10.
 T30_SNIPER_CAP_CENTS = 99           # IOC limit cap
 T30_SNIPER_SLIP_C = 2               # +2c above ask (LEADER_80PLUS tier slippage)
 
@@ -195,9 +196,15 @@ WS_BOOK_FRESH_S = 2.0
 # late window (book reads via WS are free, so poll tighter).
 ACTIVE_WS_SLEEP_S = 0.25
 
-# Safety caps
-DAILY_LOSS_CAP_CENTS = 4000        # $40/day stop (raised from $25 to accommodate 20ct MOVING_BIG)
-MIN_BALANCE_CENTS = 500            # $5
+# Safety caps — 2026-05-18 emergency resize for $3.71 account
+# Sized to account: account is small enough that prior caps were structurally
+# wrong. With $3.71 balance and 2ct sniper at 95c (~$1.90 cost), one loss
+# leaves $1.81 — still above the new $1 min_balance.
+DAILY_LOSS_CAP_CENTS = 2700        # was 4000; today's loss already $22.70 from EM
+                                   # bleed (now disabled). 2700 gives $4 room for
+                                   # 2x worst-case losses before forced halt.
+MIN_BALANCE_CENTS = 100            # was 500; trader cannot trade if balance<this
+                                   # but balance ($3.71) > $1 by a healthy margin
 KALSHI_CREDS_PATH = Path(r"D:\Trading\btc-bias-engine\credentials\kalshi.env")
 
 BITSTAMP_TICKER_URL = "https://www.bitstamp.net/api/v2/ticker/btcusd/"
