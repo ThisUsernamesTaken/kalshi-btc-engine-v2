@@ -1,0 +1,71 @@
+[1/4] discovering markets...
+  loaded 307 determined results (4.0s)
+  found 282 markets with determined result + strike  (4.1s)
+[2/4] simulating entries...
+  market 0/282  trades so far: 0  (0.0s)
+  market 50/282  trades so far: 45  (0.7s)
+  market 100/282  trades so far: 98  (1.2s)
+  market 150/282  trades so far: 165  (1.8s)
+  market 200/282  trades so far: 219  (2.3s)
+  market 250/282  trades so far: 268  (3.0s)
+  total simulated entries: 304  (3.2s)
+  EM diag: considered=282  no_l2=2  no_btc=0  low_gap=214  fired=66
+  gap_bps distribution: min=0.01  p25=2.03  median=5.10  p75=9.78  max=42.22
+[3/4] computing baseline P&L and R1 trigger states...
+  trade 0/304 settling... (0.0s)
+  trade 100/304 settling... (22.9s)
+  trade 200/304 settling... (51.6s)
+  trade 300/304 settling... (83.3s)
+  done.  (85.0s)
+[4/4] aggregating...
+
+====================================================================================================
+ SYNTHETIC V5 REPLAY — OUT-OF-SAMPLE (capture DB, KXBTC15M markets)
+   n_markets considered: 282    n_entries simulated: 304
+====================================================================================================
+
+[A] BASELINE (hold to settlement, no R1)
+  ALL
+    n=304  W=257 L=47  WR=84.5%  net=$-67.46  avg_W=$+0.85  avg_L=$-6.11  payoff_b=0.140
+
+  EM only
+    n=63  W=53 L=10  WR=84.1%  net=$-37.72  avg_W=$+2.46  avg_L=$-16.83  payoff_b=0.146
+  LATE only
+    n=241  W=204 L=37  WR=84.6%  net=$-29.74  avg_W=$+0.44  avg_L=$-3.21  payoff_b=0.136
+
+[B] WITH R1 (exit if contra>5c at T-60s)
+  ALL
+    n=304  W=247 L=57  WR=81.2%  net=$-26.04  avg_W=$+0.78  avg_L=$-3.83  payoff_b=0.203
+
+  EM only
+    n=63  W=53 L=10  WR=84.1%  net=$-15.78  avg_W=$+2.21  avg_L=$-13.29  payoff_b=0.166
+  LATE only
+    n=241  W=194 L=47  WR=80.5%  net=$-10.26  avg_W=$+0.39  avg_L=$-1.82  payoff_b=0.213
+
+  delta NET = $+41.42  (80 triggers)
+
+[C] R1 CONFUSION (vs hold-to-settle outcome)
+  TP (caught a loser):     47
+  FP (aborted a winner):   33
+  FN (missed a loser):     0
+  TN (let winner ride):    224
+  precision = TP/(TP+FP) = 58.8%
+  recall    = TP/(TP+FN) = 100.0%
+
+  $ saved by TPs: $+120.43
+  $ cost  by FPs: $-79.01
+  net rule impact: $+41.42
+
+  big losses (>$5) prevented: 10
+Traceback (most recent call last):
+  File "C:\Trading\kalshi-btc-engine-v2\_v5_synthetic_replay.py", line 331, in <module>
+    print(f"    {t['ticker'][-22:]:>22s} {t['leg']:<4} {t['side']}x{t['contracts']:>2}@{t['entry_c']}c  "
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          f"baseline=${t['baseline_net_c']/100:+.2f}  R1=${t['r1_net_c']/100:+.2f}  "
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+          f"\u0394=${(t['r1_net_c']-t['baseline_net_c'])/100:+.2f}")
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\coleb\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u0394' in position 73: character maps to <undefined>

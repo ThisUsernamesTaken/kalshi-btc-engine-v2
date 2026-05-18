@@ -1,0 +1,64 @@
+[setup] loading markets...
+  312 markets
+[setup] fetching L2 snapshots at 4 checkpoints per market...
+  market 0/312 (0.8s)
+  market 50/312 (0.9s)
+  market 100/312 (0.9s)
+  market 150/312 (0.9s)
+  market 200/312 (1.0s)
+  market 250/312 (1.0s)
+  market 300/312 (1.0s)
+  L2 done (1.1s)
+
+====================================================================================================
+ SIZING-SCHEDULE COMPARISON — Bayesian DCA vs lump-sum
+====================================================================================================
+
+  schedule         n      WR  aborts        net   EV/trade  avg_entry   max_loss    capital
+  (schedules show: targets at T-300/180/90/30; gated on bid >= thr)
+
+  S0_lump        226  100.0%       0  $ +32.76  $+0.1450     98.4c  $ +0.09  $   9.84
+  S1_linear      304   84.2%      48  $ +16.71  $+0.0550     94.4c  $ -9.36  $   8.34
+  S2_sqrt        303   82.8%      52  $  -1.88  $-0.0062     92.9c  $ -7.37  $   7.77
+  S3_back        302   84.1%      48  $ +13.26  $+0.0439     95.1c  $ -6.58  $   7.18
+  S4_front       305   83.0%      52  $  -4.61  $-0.0151     91.9c  $ -9.15  $   8.67
+  S5_pyramid     306   81.7%      56  $  +7.17  $+0.0234     93.3c  $ -5.60  $   6.77
+
+  Schedule definitions (target_size @ checkpoint, bid threshold):
+    S0_lump       T-90:10ct@93c
+    S1_linear     T-300:2ct@70c -> T-180:5ct@80c -> T-90:10ct@90c -> T-30:10ct@90c
+    S2_sqrt       T-300:4ct@70c -> T-180:6ct@75c -> T-90:8ct@85c -> T-30:10ct@93c
+    S3_back       T-300:1ct@70c -> T-180:3ct@80c -> T-90:7ct@90c -> T-30:10ct@93c
+    S4_front      T-300:6ct@70c -> T-180:8ct@75c -> T-90:10ct@85c -> T-30:10ct@90c
+    S5_pyramid    T-300:2ct@65c -> T-180:4ct@75c -> T-90:6ct@85c -> T-30:10ct@90c
+
+  === Detailed comparison: lump-sum vs sqrt-Bayesian ===
+
+  S0_lump:
+    n=226  wins=226  losses=0  aborts=0
+    avg win = $+0.145  avg loss = $+0.000
+    total net = $+32.76
+
+  S2_sqrt:
+    n=303  wins=251  losses=52  aborts=52
+    avg win = $+0.431  avg loss = $-2.115
+    total net = $-1.88
+    biggest losses:
+      pos= 8  avg_entry= 92.2c  side=yes  aborted=True  net=$-7.37
+      pos= 8  avg_entry= 90.0c  side=no  aborted=True  net=$-5.91
+      pos= 6  avg_entry= 81.0c  side=no  aborted=True  net=$-4.62
+      pos= 6  avg_entry= 81.0c  side=no  aborted=True  net=$-4.15
+      pos= 8  avg_entry= 84.0c  side=yes  aborted=True  net=$-4.06
+
+  S5_pyramid:
+    n=306  wins=250  losses=56  aborts=56
+    avg win = $+0.291  avg loss = $-1.169
+    total net = $+7.17
+    biggest losses:
+      pos= 6  avg_entry= 93.3c  side=yes  aborted=True  net=$-5.60
+      pos= 6  avg_entry= 83.7c  side=no  aborted=True  net=$-4.07
+      pos= 6  avg_entry= 84.0c  side=yes  aborted=True  net=$-3.05
+      pos= 4  avg_entry= 82.0c  side=no  aborted=True  net=$-2.81
+      pos= 4  avg_entry= 80.0c  side=yes  aborted=True  net=$-2.59
+
+[done] 1.1s

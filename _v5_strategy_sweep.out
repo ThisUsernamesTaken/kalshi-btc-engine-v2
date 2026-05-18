@@ -1,0 +1,82 @@
+[setup] loading markets + V5 entries...
+  283 markets (0.9s)
+[setup] simulating V5 entries with features...
+  309 trades (0.7s)
+[setup] baseline V5 net = $-63.73
+
+========================================================================================
+ STRATEGY A: Vol-regime filter (5-min RV at entry)
+========================================================================================
+  309 trades with RV data
+  RV quartiles (%/min): q1=0.016  q2=0.027  q3=0.041  max=0.131
+
+  quartile       n      WR     avg_L        net
+  low (Q1)      77   92.2%  $ -2.89  $ +18.39
+  mid-low (Q2)  77   85.7%  $ -2.93  $ +10.59
+  mid-high (Q3)  77   85.7%  $ -4.95  $  -2.03
+  HIGH (Q4)     78   75.6%  $ -9.64  $ -90.68
+
+  RULE A: skip RV >= 0.041 %/min
+    kept n=231  net=$+26.95  (saved $+90.68 by skipping top-Q)
+
+========================================================================================
+ STRATEGY B: Counter-V5 (buy the underdog side V5 fades)
+========================================================================================
+  n=309  W=47/309=15.2%
+  net=$+25.93  vs V5 baseline $-63.73
+  avg implied prob (contra side) = 13.0%   realized WR = 15.2%
+  -> book calibration symmetric (book is right)
+
+========================================================================================
+ STRATEGY C: R1-as-entry (buy my-side at 99c when contra <= 1c at T-60s)
+========================================================================================
+  n=167  W=166/167=99.4%  net=$+5.12
+  avg fee per trade: 1.0c
+  avg_W=$+0.09  avg_L=$-9.91  payoff_b=0.009
+  EV/trade=$+0.031
+
+========================================================================================
+ STRATEGY D: Cushion bucket (|btc - strike| at entry)
+========================================================================================
+  309 trades with cushion data
+  bucket           n      WR    avg_W     avg_L        net   EV/trade
+  -10 to +10      16   87.5%  $+1.03  $ -1.21  $ +11.95  $+0.747
+  +10 to +50     100   72.0%  $+0.82  $ -3.00  $ -24.95  $-0.249
+  +50 to +100     97   93.8%  $+0.68  $-10.00  $  +2.04  $+0.021
+  >+100 ITM       96   88.5%  $+1.03  $-12.79  $ -52.77  $-0.550
+
+  RULE D: keep only cushion >= +$50 (i.e., favorite is ITM by $50+)
+    n=193  WR=91.2%  net=$-50.73
+
+========================================================================================
+ STRATEGY E: Settle-direction serial correlation (Markov)
+========================================================================================
+  Transitions (n=282):  Y->Y=59  Y->N=72  N->Y=72  N->N=79
+  base rate P(yes) = 46.5%
+  P(yes | prev=yes) = 45.0%
+  P(yes | prev=no)  = 47.7%
+  -> INDEPENDENT (no signal)
+  3-streaks observed: 72
+    YYY -> Y: 18/32 (56.2%)
+    NNN -> N: 18/40 (45.0%)
+
+========================================================================================
+ STRATEGY F: Negative-cost straddle scan (yes_ask + no_ask < 100c)
+========================================================================================
+  scanned 100 markets x 8 timepoints = 800 samples
+  no-arb violations (yes_ask + 100-yes_bid < 100): 0
+  (none — expected; no-arb constraint holds in the book)
+
+========================================================================================
+ SUMMARY — all strategies vs V5 baseline
+========================================================================================
+  strategy                                     n      WR        net   EV/trade
+  V5 baseline (hold-to-settle)               309   84.8%  $ -63.73  $-0.206
+  A: skip top-Q RV (rv >= 0.041%/min)        231   87.9%  $ +26.95  $+0.117
+  B: counter-V5 (buy underdog)               309   15.2%  $ +25.93  $+0.084
+  C: R1-as-entry (buy at 99c late)           167   99.4%  $  +5.12  $+0.031
+  D: cushion >= +$50 (deep favorite)         193   91.2%  $ -50.73  $-0.263
+  E: settle-direction Markov                   -  P(Y|Y)=45.0%  P(Y|N)=47.7%  base=46.5%
+  F: negative-cost straddle scan               0 samples found
+
+[done] total runtime: 7.5s

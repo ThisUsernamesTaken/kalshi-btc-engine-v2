@@ -1,0 +1,85 @@
+[setup] loading markets...
+  329 markets
+[setup] fetching L2 snapshots...
+  market 0/329 (1.1s)
+  market 50/329 (30.3s)
+  market 100/329 (60.6s)
+  market 150/329 (93.5s)
+  market 200/329 (126.4s)
+  market 250/329 (161.9s)
+  market 300/329 (192.5s)
+  L2 done (209.3s)
+
+====================================================================================================
+ PHASE (a): Tighter-threshold schedules
+====================================================================================================
+  schedule               n      WR  aborts        net   EV/trade   max_loss
+  S0_lump              241  100.0%       0  $ +34.47  $+0.1430  $ +0.09
+  S6_tight_sqrt        309   93.9%      19  $ +30.57  $+0.0989  $ -7.37
+  S7_super_tight       308   95.5%      14  $ +27.29  $+0.0886  $ -7.67
+  S8_quick_ramp        307   97.4%       8  $ +40.24  $+0.1311  $ -4.83
+  S9_only_strong       260   97.3%       6  $ +31.14  $+0.1198  $ -4.72
+  S10_dual_strong      263   97.3%       4  $ +26.81  $+0.1019  $ -2.98
+  S11_lump_higher      232  100.0%       0  $ +29.64  $+0.1278  $ +0.09
+  S12_pure_T30         177  100.0%       0  $ +18.12  $+0.1024  $ +0.09
+
+  >>> best (a): S8_quick_ramp with net $+40.24
+
+====================================================================================================
+ PHASE (b): First-crossing entry (enter at FIRST T where bid >= thr)
+====================================================================================================
+  config                             n      WR  avg_entry  avg_T_entry        net   EV/trade
+  first 93c in [T-300, T-30]       312   95.2%     95.9c  T- 213.3s  $ -31.32  $-0.1004
+  first 93c in [T-180, T-30]       311   96.5%     97.0c  T- 148.6s  $ -24.78  $-0.0797
+  first 95c in [T-300, T-30]       306   95.8%     97.1c  T- 196.8s  $ -48.24  $-0.1576
+  first 90c in [T-180, T-30]       316   95.9%     96.1c  T- 152.7s  $ -16.53  $-0.0523
+  first 92c in [T-180, T-30]       312   96.5%     96.8c  T- 150.3s  $ -17.94  $-0.0575
+  first 93c in [T-120, T-60]       287   97.6%     97.8c  T- 112.1s  $ -11.54  $-0.0402
+  first 93c in [T-90,  T-30]       301   98.0%     98.0c  T-  83.4s  $  -6.44  $-0.0214
+
+  >>> best (b): first 93c in [T-90,  T-30] with net $-6.44
+
+====================================================================================================
+ ALPHA COMPARISON: (a) vs (b)
+====================================================================================================
+  (a) best: S8_quick_ramp             net $+40.24  EV/trade $+0.1311
+  (b) best: first 93c in [T-90,  T-30] net $-6.44  EV/trade $-0.0214
+  >>> winner: (a) = S8_quick_ramp
+
+====================================================================================================
+ PHASE (c): Mixed bankroll — 80% lump-sum + 20% S8_quick_ramp
+====================================================================================================
+  Markets:
+    only lump fires:    0
+    only winner fires:  66
+    BOTH fire:          241  (combined position in same direction)
+    total triggered:    307
+
+  Naive sum (independent capital):
+    lump @ 10ct:        $+34.47
+    winner @ 10ct:      $+40.24
+    combined sum:       $+74.72
+
+  80/20 capital split:
+    lump @ 8ct:         $+27.58
+    winner @ 2ct:       $+8.05
+    weighted total:     $+35.62
+
+  Allocation sensitivity (per-market sums @ 10ct rescaled):
+    lump_pct  winner_pct      total   EV/trade
+       100%        0%      $ +34.47  $+0.1123
+        90%       10%      $ +35.05  $+0.1142
+        80%       20%      $ +35.62  $+0.1160
+        70%       30%      $ +36.20  $+0.1179
+        60%       40%      $ +36.78  $+0.1198
+        50%       50%      $ +37.36  $+0.1217
+        40%       60%      $ +37.94  $+0.1236
+        30%       70%      $ +38.51  $+0.1254
+        20%       80%      $ +39.09  $+0.1273
+        10%       90%      $ +39.67  $+0.1292
+         0%      100%      $ +40.24  $+0.1311
+
+  Correlation of per-market P&L (overlap markets, n=241): +0.594
+    (high correlation = redundant; low/negative = diversification benefit)
+
+[done] 209.4s

@@ -1,0 +1,151 @@
+[setup] loading markets...
+  305 markets (0.9s)
+[setup] simulating V5 entries + features...
+  market 0/305 (0.0s)
+  market 50/305 (65.4s)
+  market 100/305 (118.1s)
+  market 150/305 (153.3s)
+  market 200/305 (185.2s)
+  market 250/305 (219.7s)
+  market 300/305 (272.3s)
+  551 entries simulated (281.5s)
+[setup] computing P&Ls...
+  done (0.0s)
+
+==============================================================================================================
+ PART 1: REPLICATE BASELINE (current live config sans the variants)
+==============================================================================================================
+  EM baseline (20ct)                                  n=  46  WR= 89.1%  net=$ -14.08  EV=$-0.3061
+  LATE baseline (V5 tiers)                            n= 263  WR= 84.4%  net=$ -35.85  EV=$-0.1363
+  LUMP fallback @ T-90 fav>=92c (5ct)                 n= 242  WR= 39.7%  net=$  -3.60  EV=$-0.0149
+  EM + LATE combined                                  n= 309  WR= 85.1%  net=$ -49.93  EV=$-0.1616
+  EM + LATE + LUMP combined (TRADE-EVERY-SESSION)     n= 551  WR= 65.2%  net=$ -53.53  EV=$-0.0972
+
+==============================================================================================================
+ PART 2: VERIFY THE 89c CURSED CLUSTER (live n=2 losses; check on backtest)
+==============================================================================================================
+  EM @ 89c all                                        n=   2  WR=100.0%  net=$  +4.12  EV=$+2.0600
+  EM @ 89c, gap_bps<13 (CURSED?)                      n=   1  WR=100.0%  net=$  +2.06  EV=$+2.0600
+  EM @ 89c, gap_bps>=13                               n=   1  WR=100.0%  net=$  +2.06  EV=$+2.0600
+  EM excluding (89c & gap<13)                         n=  45  WR= 88.9%  net=$ -16.14  EV=$-0.3587
+
+EM by entry price (any gap):
+    86c  n=  6  WR=100.0%  net=$ +15.78  EV=$+2.6300
+    87c  n=  6  WR= 83.3%  net=$  -5.36  EV=$-0.8933
+    88c  n=  6  WR= 66.7%  net=$ -26.50  EV=$-4.4167
+    89c  n=  2  WR=100.0%  net=$  +4.12  EV=$+2.0600
+    90c  n=  8  WR= 75.0%  net=$ -25.04  EV=$-3.1300
+    91c  n=  5  WR=100.0%  net=$  +8.40  EV=$+1.6800
+    92c  n=  3  WR=100.0%  net=$  +4.47  EV=$+1.4900
+    93c  n=  1  WR=100.0%  net=$  +1.30  EV=$+1.3000
+    94c  n=  5  WR=100.0%  net=$  +5.60  EV=$+1.1200
+    95c  n=  2  WR=100.0%  net=$  +1.86  EV=$+0.9300
+    96c  n=  1  WR=100.0%  net=$  +0.74  EV=$+0.7400
+    97c  n=  1  WR=100.0%  net=$  +0.55  EV=$+0.5500
+
+==============================================================================================================
+ PART 3: VERIFY THE MOVING_BIG CUSHION GATE
+==============================================================================================================
+LATE LEADER_80PLUS by cushion bucket:
+  cushion $>=150                                      n= 192  WR= 92.7%  net=$ -21.21  EV=$-0.1105
+
+==============================================================================================================
+ PART 4: REGIME — RV5 cutoffs (skip vs flip)
+==============================================================================================================
+  RV5 percentiles: p50=0.0232  p75=0.0352  p90=0.0519
+
+== EM with RV gating ==
+  p50 (0.0232)  skip:  keep_n=  4 keep_net=$  +7.12  flip:  combined_net=$ +17.52
+  p60 (0.0276)  skip:  keep_n=  8 keep_net=$ +15.55  flip:  combined_net=$ +35.52
+  p70 (0.0319)  skip:  keep_n= 13 keep_net=$  +6.80  flip:  combined_net=$ +19.52
+  p75 (0.0351)  skip:  keep_n= 17 keep_net=$ +15.04  flip:  combined_net=$ +37.12
+  p80 (0.0390)  skip:  keep_n= 21 keep_net=$ +24.42  flip:  combined_net=$ +57.12
+  p85 (0.0440)  skip:  keep_n= 24 keep_net=$  +8.71  flip:  combined_net=$ +26.32
+  p90 (0.0519)  skip:  keep_n= 32 keep_net=$ -18.02  flip:  combined_net=$ -25.28
+
+== LATE with RV gating ==
+  p50 (0.0232)  skip:  keep_n=140 keep_net=$  +9.52  flip:  combined_net=$ +46.85
+  p60 (0.0276)  skip:  keep_n=166 keep_net=$  +6.94  flip:  combined_net=$ +43.67
+  p70 (0.0319)  skip:  keep_n=196 keep_net=$  -3.88  flip:  combined_net=$ +23.83
+  p75 (0.0351)  skip:  keep_n=208 keep_net=$ -12.94  flip:  combined_net=$  +6.51
+  p80 (0.0390)  skip:  keep_n=219 keep_net=$ -17.72  flip:  combined_net=$  -2.29
+  p85 (0.0440)  skip:  keep_n=235 keep_net=$ -14.89  flip:  combined_net=$  +4.43
+  p90 (0.0519)  skip:  keep_n=241 keep_net=$ -19.01  flip:  combined_net=$  -3.41
+
+== LUMP with RV gating (lump rarely should flip; fav is already strong) ==
+  p50  skip: keep_n=130 keep_net=$  +5.99  flip: combined=$ +14.40
+  p75  skip: keep_n=187 keep_net=$  +3.72  flip: combined=$ +10.50
+  p90  skip: keep_n=221 keep_net=$  +0.58  flip: combined=$  +4.60
+
+==============================================================================================================
+ PART 5: NEW FEATURES
+==============================================================================================================
+
+== BTC velocity sign (sign of 5m change) — alignment with entry side ==
+EM:
+    vel ALIGNED                                       n=  46  WR= 89.1%  net=$ -14.08  EV=$-0.3061
+    vel AGAINST                                       EMPTY
+    vel FLAT                                          EMPTY
+LATE:
+    vel ALIGNED                                       n= 164  WR= 89.0%  net=$  +1.81  EV=$+0.0110
+    vel AGAINST                                       n=  78  WR= 76.9%  net=$ -22.41  EV=$-0.2873
+    vel FLAT                                          n=  21  WR= 76.2%  net=$ -15.25  EV=$-0.7262
+
+== Hour-of-day (UTC) buckets ==
+    UTC h=00                                          n=  13  WR= 69.2%  net=$ -23.86  EV=$-1.8354
+    UTC h=01                                          n=  13  WR= 84.6%  net=$  -1.32  EV=$-0.1015
+    UTC h=02                                          n=  11  WR= 72.7%  net=$  -9.08  EV=$-0.8255
+    UTC h=03                                          n=  12  WR= 83.3%  net=$  -0.10  EV=$-0.0083
+    UTC h=04                                          n=  17  WR=100.0%  net=$ +13.93  EV=$+0.8194
+    UTC h=05                                          n=  14  WR= 64.3%  net=$  -7.12  EV=$-0.5086
+    UTC h=06                                          n=  12  WR=100.0%  net=$  +4.52  EV=$+0.3767
+    UTC h=07                                          n=  10  WR=100.0%  net=$  +5.20  EV=$+0.5200
+    UTC h=08                                          n=  12  WR= 91.7%  net=$  +4.31  EV=$+0.3592
+    UTC h=09                                          n=  12  WR=100.0%  net=$  +5.19  EV=$+0.4325
+    UTC h=10                                          n=  17  WR= 94.1%  net=$  +6.92  EV=$+0.4071
+    UTC h=11                                          n=  13  WR= 84.6%  net=$  +2.91  EV=$+0.2238
+    UTC h=12                                          n=  17  WR= 88.2%  net=$  +8.19  EV=$+0.4818
+    UTC h=13                                          n=  14  WR=100.0%  net=$  +8.64  EV=$+0.6171
+    UTC h=14                                          n=  17  WR= 94.1%  net=$  +3.22  EV=$+0.1894
+    UTC h=15                                          n=  13  WR= 61.5%  net=$  -7.30  EV=$-0.5615
+    UTC h=16                                          n=  11  WR= 63.6%  net=$ -18.34  EV=$-1.6673
+    UTC h=17                                          n=  14  WR= 71.4%  net=$ -22.73  EV=$-1.6236
+    UTC h=18                                          n=  12  WR= 83.3%  net=$ -12.30  EV=$-1.0250
+    UTC h=19                                          n=  13  WR= 76.9%  net=$  -0.75  EV=$-0.0577
+    UTC h=20                                          n=   7  WR= 57.1%  net=$ -21.80  EV=$-3.1143
+    UTC h=21                                          n=   9  WR=100.0%  net=$  +9.33  EV=$+1.0367
+    UTC h=22                                          n=  10  WR=100.0%  net=$  +3.07  EV=$+0.3070
+    UTC h=23                                          n=  16  WR= 87.5%  net=$  -0.66  EV=$-0.0413
+
+== Day-of-week ==
+    Wed                                               n=  43  WR= 90.7%  net=$ +11.03  EV=$+0.2565
+    Thu                                               n=  83  WR= 77.1%  net=$ -67.54  EV=$-0.8137
+    Fri                                               n=  94  WR= 85.1%  net=$  -1.14  EV=$-0.0121
+    Sat                                               n=  81  WR= 91.4%  net=$ +16.97  EV=$+0.2095
+    Sun                                               n=   8  WR= 75.0%  net=$  -9.25  EV=$-1.1562
+
+== Spread (yes_ask - yes_bid) bucket ==
+    spread <2c                                        n= 288  WR= 86.5%  net=$ -13.58  EV=$-0.0472
+    spread 2-4c                                       n=  20  WR= 65.0%  net=$ -37.00  EV=$-1.8500
+    spread 5-9c                                       n=   1  WR=100.0%  net=$  +0.65  EV=$+0.6500
+
+== Cushion all-legs bucket ==
+    cushion $>=200                                    n= 309  WR= 85.1%  net=$ -49.93  EV=$-0.1616
+
+== Distance from strike (|btc-strike|/strike, bps) ==
+    EM dist <20bps                                    n=  28  WR= 96.4%  net=$ +36.76  EV=$+1.3129
+    EM dist 20-49                                     n=  18  WR= 77.8%  net=$ -50.84  EV=$-2.8244
+
+==============================================================================================================
+ PART 6: PROPOSED STACK PROJECTION — sequential rule application
+==============================================================================================================
+  config                                                              n      WR         net         EV
+  Baseline (current live)                                           551   65.2%  $  -53.53  $-0.0972
+  + drop 89c×gap<13                                                 550   65.1%  $  -55.59  $-0.1011
+  + drop MB cushion<80                                              551   65.2%  $  -53.53  $-0.0972
+  + both drops                                                      550   65.1%  $  -55.59  $-0.1011
+  + both drops + skip RV>=p75                                       412   67.0%  $   +3.80  $+0.0092
+  + both drops + flip RV>=p75                                       550   55.6%  $  +21.46  $+0.0390
+  + both drops + skip RV>=p80                                       439   67.2%  $  +10.40  $+0.0237
+  + both drops + flip RV>=p80                                       550   57.8%  $  +27.79  $+0.0505
+  FULL: both drops + flip RV>=p75 + drop align AGAINST              550   55.6%  $  +21.46  $+0.0390

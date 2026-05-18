@@ -1,0 +1,29 @@
+[loaded] 305 markets
+=== EM AUDIT — T=600s, gap≥10.0bps, ask in [60,99], qty=20 ===
+  TRAIN: n=53 WR=83.0% net=$-35.09 EV=$-0.6621
+  TEST:  n=13 WR=92.3% net=$+3.20 EV=$+0.2462
+
+=== TEST losers (if any) ===
+  KXBTC15M-26MAY161215-15 fs=yes fa=90c result=no gap=12.35 pnl=-1813c
+
+=== ALL TEST trades ===
+  KXBTC15M-26MAY160045-45 fs=no fa=89c result=no gap=17.71 pnl=206c
+  KXBTC15M-26MAY160300-00 fs=no fa=93c result=no gap=18.95 pnl=130c
+  KXBTC15M-26MAY160400-00 fs=no fa=88c result=no gap=12.09 pnl=225c
+  KXBTC15M-26MAY160530-30 fs=no fa=97c result=no gap=39.70 pnl=55c
+  KXBTC15M-26MAY160615-15 fs=no fa=86c result=no gap=17.78 pnl=263c
+  KXBTC15M-26MAY160645-45 fs=yes fa=91c result=yes gap=16.97 pnl=168c
+  KXBTC15M-26MAY160715-15 fs=yes fa=89c result=yes gap=11.11 pnl=206c
+  KXBTC15M-26MAY160830-30 fs=no fa=90c result=no gap=10.20 pnl=187c
+  KXBTC15M-26MAY160845-45 fs=yes fa=94c result=yes gap=13.96 pnl=112c
+  KXBTC15M-26MAY161045-45 fs=yes fa=94c result=yes gap=14.56 pnl=112c
+  KXBTC15M-26MAY161215-15 fs=yes fa=90c result=no gap=12.35 pnl=-1813c
+  KXBTC15M-26MAY161230-30 fs=yes fa=90c result=yes gap=10.53 pnl=187c
+  KXBTC15M-26MAY162115-15 fs=yes fa=85c result=yes gap=11.12 pnl=282c
+
+=== Sweeping gap threshold (5ct) ===
+  gap≥5bps, 5ct: n=34 WR=85.3% net=$+0.06 EV=$+0.0018
+  gap≥10bps, 5ct: n=13 WR=92.3% net=$+0.74 EV=$+0.0569
+  gap≥15bps, 5ct: n=5 WR=100.0% net=$+2.03 EV=$+0.4060
+  gap≥20bps, 5ct: n=1 WR=100.0% net=$+0.13 EV=$+0.1300
+  gap≥30bps, 5ct: n=1 WR=100.0% net=$+0.13 EV=$+0.1300

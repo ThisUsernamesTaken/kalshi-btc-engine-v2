@@ -3,7 +3,7 @@ REM Indefinite auto-restart watchdog for the Pine Script paper trader.
 REM Runs live_paper_ta.py in a loop, restarting on any exit.
 
 setlocal
-set ENGINE_DIR=C:\Trading\kalshi-btc-engine-v2
+set ENGINE_DIR=D:\Trading\kalshi-btc-engine-v2
 set PY=C:\Users\coleb\AppData\Local\Python\bin\python.exe
 set PYTHONPATH=%ENGINE_DIR%\src
 set PYTHONIOENCODING=utf-8

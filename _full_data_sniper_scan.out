@@ -1,0 +1,7 @@
+[setup] loading settled markets...
+  331 settled markets (1.1s)
+  Train: 231 markets, Test: 100 markets
+  Train period: 2026-05-12 20:30:00 to 2026-05-15 16:30:00
+  Test period:  2026-05-15 16:45:00 to 2026-05-16 19:15:00
+
+[scan] sweeping 7 T x 10 thresholds...
