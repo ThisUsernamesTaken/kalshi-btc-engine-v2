@@ -96,41 +96,44 @@ async def btc_poller(buf: BTCPriceTracker, session: aiohttp.ClientSession, log_f
 
 
 async def fetch_floor_strike(client: KalshiClient, ticker: str) -> Optional[float]:
+    """Match production's pattern in live_v5_unified.py:fetch_floor_strike — hit
+    the raw /markets/{ticker} endpoint and extract floor_strike."""
     try:
-        c = await client.get_contract(ticker)
-        # Extract floor_strike from raw fields if available
-        raw = getattr(c, "raw_json", None)
-        if raw:
-            try:
-                rj = json.loads(raw) if isinstance(raw, str) else raw
-                return float(rj.get("floor_strike")) if rj.get("floor_strike") else None
-            except Exception:
-                pass
-        # Some Kalshi contracts expose subtitle with target — best-effort
-        return None
+        data = await client._request("GET", f"/markets/{ticker}")
     except Exception:
+        return None
+    market = (data or {}).get("market") or {}
+    strike = market.get("floor_strike")
+    if strike is None:
+        return None
+    try:
+        return float(strike)
+    except (TypeError, ValueError):
         return None
 
 
 async def discover_open_markets(client: KalshiClient) -> list[dict]:
-    """Find KXBTC15M markets that are open or about to open."""
+    """Find KXBTC15M markets that are open or about to open.
+    Uses production's discover helper: client.find_btc_contracts()."""
     try:
-        markets = await client.get_markets(series_ticker="KXBTC15M", status="open")
-    except Exception:
+        contracts = await client.find_btc_contracts(min_minutes_remaining=0.0)
+    except Exception as e:
+        print(f"[v3] discover error: {type(e).__name__}: {e}", flush=True)
         return []
     out = []
     now_ms = int(time.time() * 1000)
-    for m in (markets or []):
-        try:
-            close_ms = int(dt.datetime.fromisoformat(
-                m.close_time.replace("Z", "+00:00")).timestamp() * 1000)
-        except Exception:
+    for c in (contracts or []):
+        # KalshiContract has `expiry_ts` (Unix ms), not `close_time`
+        close_ms = int(getattr(c, "expiry_ts", 0))
+        if close_ms <= 0:
             continue
         if close_ms < now_ms:
             continue
-        if close_ms - now_ms > 15 * 60 * 1000:  # > 15 min away, too early
+        if close_ms - now_ms > 15 * 60 * 1000:  # >15 min away, too early
             continue
-        out.append({"ticker": m.ticker, "close_ts_ms": close_ms})
+        if not c.ticker.startswith("KXBTC15M"):
+            continue
+        out.append({"ticker": c.ticker, "close_ts_ms": close_ms})
     return out
 
 
@@ -359,14 +362,16 @@ async def main_async() -> int:
                         if s and s > 0:
                             state["strike"] = s
 
-                    # Fetch current book
+                    # Fetch current book — KalshiOrderBook properties return CENTS as int
                     try:
                         ob = await client.get_orderbook(ticker)
                     except Exception:
                         continue
-                    yb_c = int(round((ob.yes_bid or 0) * 100)) if hasattr(ob, "yes_bid") else None
-                    ya_c = int(round((ob.yes_ask or 0) * 100)) if hasattr(ob, "yes_ask") else None
-                    if not yb_c or not ya_c:
+                    if not ob or not ob.yes_bids or not ob.no_bids:
+                        continue
+                    yb_c = int(ob.best_yes_bid)
+                    ya_c = int(ob.best_yes_ask)
+                    if not (0 < yb_c < 100) or not (0 < ya_c <= 100):
                         continue
 
                     snap = MarketSnapshot(
