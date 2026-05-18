@@ -1,0 +1,167 @@
+[engine_v3 backtest]
+
+========================================================================================
+ BACKTEST: BASELINE (T-30 fav>=85c, 5ct fixed, no filters)
+   decision_time_s=30 vwap_lock=False jump_filter=False bayes_size=False cusum=False prior=Beta(2,2) fixed_ct=5
+========================================================================================
+ Loaded 305 settled markets
+   processing market 0/305...
+   processing market 50/305...
+   processing market 100/305...
+   processing market 150/305...
+   processing market 200/305...
+   processing market 250/305...
+   processing market 300/305...
+
+ RESULTS (BASELINE (T-30 fav>=85c, 5ct fixed, no filters)):
+   Total decisions: 176
+   ENTER: 39  (22.2% of markets)
+   SKIP:  137
+   Wins:  39 / 39 = 100.0% WR
+   Net P&L: $+4.40
+   EV per ENTER: $+0.1128
+   Final posterior: Beta(41.0, 2.0) mean=0.953
+   Top skip reasons:
+     FAV_ASK_DEGENERATE: 120
+     FAV_BID_BELOW_FLOOR: 17
+
+========================================================================================
+ BACKTEST: + VWAP_LOCK (5ct)
+   decision_time_s=30 vwap_lock=True jump_filter=False bayes_size=False cusum=False prior=Beta(2,2) fixed_ct=5
+========================================================================================
+ Loaded 305 settled markets
+   processing market 0/305...
+   processing market 50/305...
+   processing market 100/305...
+   processing market 150/305...
+   processing market 200/305...
+   processing market 250/305...
+   processing market 300/305...
+
+ RESULTS (+ VWAP_LOCK (5ct)):
+   Total decisions: 176
+   ENTER: 38  (21.6% of markets)
+   SKIP:  138
+   Wins:  38 / 38 = 100.0% WR
+   Net P&L: $+3.84
+   EV per ENTER: $+0.1011
+   Final posterior: Beta(40.0, 2.0) mean=0.952
+   Top skip reasons:
+     FAV_ASK_DEGENERATE: 120
+     FAV_BID_BELOW_FLOOR: 17
+     VWAP_LOCK_DISAGREES: 1
+
+========================================================================================
+ BACKTEST: + VWAP_LOCK + JUMP_FILTER (5ct)
+   decision_time_s=30 vwap_lock=True jump_filter=True bayes_size=False cusum=False prior=Beta(2,2) fixed_ct=5
+========================================================================================
+ Loaded 305 settled markets
+   processing market 0/305...
+   processing market 50/305...
+   processing market 100/305...
+   processing market 150/305...
+   processing market 200/305...
+   processing market 250/305...
+   processing market 300/305...
+
+ RESULTS (+ VWAP_LOCK + JUMP_FILTER (5ct)):
+   Total decisions: 176
+   ENTER: 33  (18.8% of markets)
+   SKIP:  143
+   Wins:  33 / 33 = 100.0% WR
+   Net P&L: $+3.50
+   EV per ENTER: $+0.1061
+   Final posterior: Beta(35.0, 2.0) mean=0.946
+   Top skip reasons:
+     FAV_ASK_DEGENERATE: 120
+     FAV_BID_BELOW_FLOOR: 17
+     RECENT_BTC_JUMP: 6
+
+========================================================================================
+ BACKTEST: + ALL FILTERS + CUSUM (5ct fixed)
+   decision_time_s=30 vwap_lock=True jump_filter=True bayes_size=False cusum=True prior=Beta(2,2) fixed_ct=5
+========================================================================================
+ Loaded 305 settled markets
+   processing market 0/305...
+   processing market 50/305...
+   processing market 100/305...
+   processing market 150/305...
+   processing market 200/305...
+   processing market 250/305...
+   processing market 300/305...
+
+ RESULTS (+ ALL FILTERS + CUSUM (5ct fixed)):
+   Total decisions: 176
+   ENTER: 33  (18.8% of markets)
+   SKIP:  143
+   Wins:  33 / 33 = 100.0% WR
+   Net P&L: $+3.50
+   EV per ENTER: $+0.1061
+   Final posterior: Beta(35.0, 2.0) mean=0.946
+   Top skip reasons:
+     FAV_ASK_DEGENERATE: 120
+     FAV_BID_BELOW_FLOOR: 17
+     RECENT_BTC_JUMP: 6
+
+========================================================================================
+ BACKTEST: FULL ENGINE_V3 (Bayes cold-start, Beta(2,2))
+   decision_time_s=30 vwap_lock=True jump_filter=True bayes_size=True cusum=True prior=Beta(2,2) fixed_ct=KELLY
+========================================================================================
+ Loaded 305 settled markets
+   processing market 0/305...
+   processing market 50/305...
+   processing market 100/305...
+   processing market 150/305...
+   processing market 200/305...
+   processing market 250/305...
+   processing market 300/305...
+
+ RESULTS (FULL ENGINE_V3 (Bayes cold-start, Beta(2,2))):
+   Total decisions: 176
+   ENTER: 0  (0.0% of markets)
+   SKIP:  176
+   Wins:  0 / 0 = 0.0% WR
+   Net P&L: $+0.00
+   EV per ENTER: $+0.0000
+   Final posterior: Beta(2.0, 2.0) mean=0.500
+   Top skip reasons:
+     POSTERIOR_MEAN_LOW: 176
+
+========================================================================================
+ BACKTEST: FULL ENGINE_V3 (Bayes with backtest prior Beta(45,1))
+   decision_time_s=30 vwap_lock=True jump_filter=True bayes_size=True cusum=True prior=BT fixed_ct=KELLY
+========================================================================================
+ Loaded 305 settled markets
+   processing market 0/305...
+   processing market 50/305...
+   processing market 100/305...
+   processing market 150/305...
+   processing market 200/305...
+   processing market 250/305...
+   processing market 300/305...
+
+ RESULTS (FULL ENGINE_V3 (Bayes with backtest prior Beta(45,1))):
+   Total decisions: 176
+   ENTER: 33  (18.8% of markets)
+   SKIP:  143
+   Wins:  33 / 33 = 100.0% WR
+   Net P&L: $+0.74
+   EV per ENTER: $+0.0224
+   Final posterior: Beta(78.0, 1.0) mean=0.987
+   Top skip reasons:
+     FAV_ASK_DEGENERATE: 120
+     FAV_BID_BELOW_FLOOR: 17
+     RECENT_BTC_JUMP: 6
+
+========================================================================================
+ SUMMARY
+========================================================================================
+config                                                          n     WR       net        EV
+  BASELINE (T-30 fav>=85c, 5ct fixed, no filters)                39 100.0% $  +4.40 $+0.1128
+  + VWAP_LOCK (5ct)                                              38 100.0% $  +3.84 $+0.1011
+  + VWAP_LOCK + JUMP_FILTER (5ct)                                33 100.0% $  +3.50 $+0.1061
+  + ALL FILTERS + CUSUM (5ct fixed)                              33 100.0% $  +3.50 $+0.1061
+  FULL ENGINE_V3 (Bayes cold-start, Beta(2,2))                    0   0.0% $  +0.00 $+0.0000
+  FULL ENGINE_V3 (Bayes with backtest prior Beta(45,1))          33 100.0% $  +0.74 $+0.0224
+
+[done] 16.8s total
