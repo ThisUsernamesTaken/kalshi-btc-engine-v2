@@ -12,8 +12,8 @@ Kalshi REST settlement cache (`strikes_cache.json`).
 | Bucket-conditional edge + dollar sizing + streak halt | +$2,293 / 245 tr | **−$858 / 215 tr** | **DEAD** — overfit |
 | Pine bar 5-6 + entry 92c+ filter | +$40 / 42 tr (chrono) | n/a | weak signal at small N |
 | Fair-value model (raw, taker, 10c, 1 day) | +$8.29 / 15 tr | n/a | early signal, 1 day |
-| **Fair-value model (raw, MAKER rest, 5c, 5 days)** | n/a | **+$129.50 / 275 tr** | **PROMISING** — see caveats |
-| Fair-value model + 180-600s window only (maker, 10c) | n/a | +$62.18 / 45 tr | tighter CI, smaller sample |
+| Fair-value model (raw, MAKER rest, 5c, 5 days) | n/a | +$129.50 / 275 tr | promising, CI straddles 0 |
+| **Fair-value model as VETO layer on live engines** | n/a | **+$91.62 swing / 131 tr / 5 days OOS** | **BEST DEPLOYABLE** — CI fully positive, 100% bootstrap resamples positive |
 
 ## Structural facts (verified — independent of strategy choice)
 
@@ -62,7 +62,47 @@ in 20 high-frequency buckets) but the edge *magnitudes* swing by an order
 of magnitude. The strategy picks the right buckets and bets the wrong
 sizes. WRs at n=3-15 are inside binomial noise.
 
-## Promising strategy: fair-value model
+## STRONGEST FINDING: fair-value model as a VETO layer
+
+`13_model_vs_engine.py` and `14_veto_robustness.py` show that the model
+disagrees with each live engine's direction on a *much* higher fraction of
+losing trades than winning trades. This makes it perfect for a veto layer:
+
+| Engine | Losers flagged | Winners flagged | Original P&L | After-veto P&L |
+|---|---|---|---|---|
+| v5_unified | 87% (13/15) | 3% (1/36) | −$41.00 | **+$30.33** |
+| v5_old | 50% (2/4) | 8% (2/24) | −$1.68 | **+$9.88** |
+| live_ta | 36% (5/14) | 5% (2/38) | −$21.65 | −$12.92 |
+| **Combined** | — | — | **−$64.33** | **+$27.29** |
+
+**$91.62 swing across 131 trades.** Bootstrap CI [+$26.35, +$172.49] —
+100% of resamples positive. Robust to entry-time proxy (30s-600s) and
+disagreement threshold (2-20c).
+
+The rule:
+```
+At entry trigger:
+  p_engine_implied = engine_paid_for_this_side / 100
+  p_model = settlement_fair_probability(spot, strike, tau, sigma_realized)
+  if abs(p_model - p_engine_implied) >= 0.05 and they disagree on direction:
+      SKIP TRADE
+  else:
+      proceed as engine intended
+```
+
+The model isn't predicting better on average (Brier 0.1999 model vs 0.1969
+market — market actually marginally better at raw probability). Its value
+is **directional correctness on disagreements** — when the model and
+market disagree, the model is more often right about the realized direction.
+
+Why this works mechanically: the engines (especially v5_unified) chase
+exhaustion — they enter the favorite after a big BTC move when implied p
+is high (e.g., 89c). The model sees BTC mean-reverting toward the 60s BRTI
+window and prices the favorite lower (e.g., 37c). When BTC reverts (often,
+because Kalshi settlement is averaged over the final minute), the model
+is right.
+
+## Other promising strategy: fair-value model standalone
 
 The gradient engine's `models/probability.py:settlement_fair_probability`
 implements the BRTI-averaging-aware log-normal CDF. Variance time is
@@ -194,8 +234,12 @@ $py = "C:\Users\coleb\AppData\Local\Python\bin\python.exe"
 - Any sizing scheme that scales above ~10ct without paper validation
 
 **WORTH PAPER-VALIDATING**:
-- The fair-value model (gradient engine) with `|edge| ≥ 5c`, maker-rest
-  orders, 180-600s entry window
+- **Model-veto layer on v5_unified** (highest leverage; CI fully positive).
+  Add ~10 lines to the live trigger logic: compute p_model at trigger,
+  skip if it disagrees with the trade direction by ≥5c. Even with v5_unified
+  currently stopped, the layer can be inserted before resuming live.
+- The fair-value model standalone with `|edge| ≥ 5c`, maker-rest orders,
+  180-600s entry window (CI straddles zero so lower priority than veto)
 - A "watchdog wrapper" that runs the gradient engine 24/7 with
   `observe --paper-fills --capture` to grow the OOS sample beyond 5 days
 - The maker-rest fill rate in live conditions (separate experiment)
