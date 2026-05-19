@@ -25,6 +25,11 @@ LIVE_TRADE_LOGS = [
     ('v5_old',      'live_v5_trades.jsonl'),
     ('live_ta',     'live_ta_trades.jsonl'),
     ('live_ta_v2',  'live_ta_v2_trades.jsonl'),
+    # Paper-mode logs. Same engine code, no Kalshi fills — outcomes still
+    # come from real market settlement, so they're valid for bucket WRs.
+    ('paper_ta',        'paper_ta_2026_05_12.jsonl'),
+    ('shadow_velocity', 'shadow_velocity_2026_05_14.jsonl'),
+    ('ladder_shadow',   'ladder_shadow.jsonl'),
 ]
 
 
@@ -60,14 +65,16 @@ def load_log(path: Path, label: str) -> list[dict]:
     rows = []
     for evs in ev_by_ticker.values():
         for s in evs:
-            if s.get('kind') != 'settle':
+            kind = s.get('kind')
+            # accept regular 'settle' and ladder_shadow's 'settle_with_ladder'
+            if kind not in ('settle', 'settle_with_ladder'):
                 continue
             side = s.get('side')
             entry = s.get('entry_price_cents')
             if not side or entry is None:
                 continue
-            ctr = s.get('contracts', 0)
-            gross = s.get('gross_cents', 0)
+            ctr = s.get('contracts') or s.get('entry_contracts') or 0
+            gross = s.get('gross_cents', s.get('actual_gross_cents', 0))
             result = (s.get('result') or s.get('outcome')
                       or (side if gross > 0 else ('no' if side == 'yes' else 'yes')))
             won = (result == side)
@@ -81,11 +88,17 @@ def load_log(path: Path, label: str) -> list[dict]:
             v180 = vel(entry_ts, 180_000)
             sv60  = (v60  if side == 'yes' else -v60)  if v60  is not None else None
             sv180 = (v180 if side == 'yes' else -v180) if v180 is not None else None
+            # shadow_velocity logs carry velocity_30s directly (signed by direction)
+            v30_engine = s.get('velocity_30s')
+            if v30_engine is not None and sv60 is None:
+                # promote to sv60-equivalent feature; direction already encodes sign
+                sv60 = v30_engine if side == 'yes' else -v30_engine
             rows.append(dict(
                 src=label, ticker=s['ticker'],
                 leg=s.get('leg') or 'PINE',
                 tier=s.get('tier') or s.get('tier_name'),
-                side=side, entry=entry, ctr=ctr, net_c=s.get('net_cents', 0),
+                side=side, entry=entry, ctr=ctr,
+                net_c=s.get('net_cents', s.get('actual_net_cents', s.get('combined_net_cents', 0))),
                 gross_c=gross, won=won,
                 sv60=sv60, sv180=sv180,
                 gap_bps=(trig or {}).get('gap_bps'),
@@ -98,6 +111,7 @@ def load_log(path: Path, label: str) -> list[dict]:
                 balance=(trig or {}).get('balance_cents'),
                 confidence=s.get('confidence'),
                 bar=s.get('decided_at_bar'),
+                direction=s.get('direction'),
                 entry_ts=entry_ts,
             ))
     return rows
@@ -132,15 +146,46 @@ def pine_bar_segment(bar) -> str:
     return 'late'
 
 def bucket_key(r: dict) -> tuple:
-    if r['src'] == 'live_ta':
+    """All Pine-style sources (live_ta, paper_ta, ladder_shadow) share the
+    Pine schema. shadow_velocity is its own family. v5 sources keep leg/tier."""
+    if r['src'] in ('live_ta', 'live_ta_v2', 'paper_ta'):
         return ('pine', pine_bar_segment(r.get('bar')),
                 entry_bucket(r['entry']), sv60_bucket(r.get('sv60')))
+    if r['src'] == 'shadow_velocity':
+        # direction is the actual decision signal from the velocity engine
+        return ('shadow_velo', r.get('direction') or 'na',
+                entry_bucket(r['entry']), sv60_bucket(r.get('sv60')))
+    if r['src'] == 'ladder_shadow':
+        return ('ladder', 'NA',
+                entry_bucket(r['entry']), sv60_bucket(r.get('sv60')))
+    # v5 family (v5_unified, v5_old)
     leg = r['leg']
     leg_g = ('EM' if leg == 'EARLIER_MODERATE'
              else 'LATE' if leg == 'LATE'
              else 'T30' if leg == 'T30_SNIPER'
              else leg)
     return ('v5', leg_g, entry_bucket(r['entry']), sv60_bucket(r.get('sv60')))
+
+
+def date_bucket(r: dict) -> str:
+    """ISO date (UTC) of the trade. Used by walk-forward validation."""
+    import datetime
+    ts = r.get('entry_ts') or 0
+    if not ts: return 'unknown'
+    return datetime.datetime.fromtimestamp(ts/1000, datetime.timezone.utc).strftime('%Y-%m-%d')
+
+
+def date_to_fold(date_str: str, fold_days: int = 2) -> str:
+    """Group dates into fold_days-day buckets for walk-forward folds.
+    Returns a sortable label like '2026-W19a' or just the start date."""
+    if date_str == 'unknown': return 'unknown'
+    import datetime
+    d = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+    # epoch-day // fold_days
+    epoch = (d - datetime.date(2026, 1, 1)).days
+    fold_idx = epoch // fold_days
+    fold_start = datetime.date(2026, 1, 1) + datetime.timedelta(days=fold_idx * fold_days)
+    return fold_start.strftime('%Y-%m-%d')
 
 
 # ---- Edge math ---------------------------------------------------------

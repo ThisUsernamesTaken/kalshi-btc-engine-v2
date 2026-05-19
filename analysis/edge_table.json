@@ -1,15 +1,17 @@
 {
   "schema_version": 1,
   "table_version": 1,
-  "generated_at_utc": "2026-05-19T05:54:56.069775+00:00",
+  "generated_at_utc": "2026-05-19T06:04:31.725145+00:00",
   "slip_cents": 2,
   "min_bucket_n": 3,
+  "oos_validation_status": "FAILED",
+  "oos_warning": "Walk-forward validation (see analysis/04_walk_forward.py) shows every sizing-config OOS-negative. The bucket-conditional edges do not generalize: in-sample +$2,293 -> OOS -$858 on 215 trades. DO NOT DEPLOY this table as a live trading strategy. Use only as a diagnostic of how the engines behaved in-sample. The structural findings (slippage, fill-rate skew, engines net-negative) remain valid; the specific bucket edges do not.",
   "input_fingerprint": {
     "v5_unified": {
       "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\live_v5_unified_trades.jsonl",
-      "size_bytes": 1397155,
-      "mtime_iso": "2026-05-19T05:54:30.331047+00:00",
-      "head_tail_sha256": "9a293af78e2efcc4"
+      "size_bytes": 1399162,
+      "mtime_iso": "2026-05-19T06:04:05.647020+00:00",
+      "head_tail_sha256": "3beffbb4fab6f7ba"
     },
     "v5_old": {
       "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\live_v5_trades.jsonl",
@@ -28,14 +30,32 @@
       "size_bytes": 95527,
       "mtime_iso": "2026-05-14T18:11:02.667469+00:00",
       "head_tail_sha256": "1d1cbad7fbae089f"
+    },
+    "paper_ta": {
+      "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\paper_ta_2026_05_12.jsonl",
+      "size_bytes": 3657253,
+      "mtime_iso": "2026-05-19T04:02:02.181074+00:00",
+      "head_tail_sha256": "aef30386ca3a9514"
+    },
+    "shadow_velocity": {
+      "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\shadow_velocity_2026_05_14.jsonl",
+      "size_bytes": 860138,
+      "mtime_iso": "2026-05-16T20:04:04.618643+00:00",
+      "head_tail_sha256": "b4134d54dd338fea"
+    },
+    "ladder_shadow": {
+      "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\ladder_shadow.jsonl",
+      "size_bytes": 18272,
+      "mtime_iso": "2026-05-14T15:30:09.231464+00:00",
+      "head_tail_sha256": "a37cd826644fe15d"
     }
   },
   "totals": {
-    "n_settles": 134,
-    "n_buckets": 12,
-    "n_keep_buckets": 5,
-    "n_invert_buckets": 7,
-    "trades_covered": 80
+    "n_settles": 648,
+    "n_buckets": 39,
+    "n_keep_buckets": 21,
+    "n_invert_buckets": 18,
+    "trades_covered": 537
   },
   "bucketing_spec": {
     "sv60_thresholds": {
@@ -56,6 +76,7 @@
   },
   "sizing_recommendation": {
     "scheme": "dollar-at-risk discrete tiers + bucket streak halt",
+    "deployment_status": "NOT_RECOMMENDED \u2014 OOS validation failed",
     "slip_cents": 2,
     "risk_tiers_c": [
       {
@@ -79,9 +100,69 @@
     "min_edge_per_ct_c": 5,
     "streak_halt_losses": 2,
     "streak_cooldown_trades": 10,
-    "notes": "Risk-tier dollars scaled to a small starting bankroll. Scale linearly with bankroll. The streak halt is the load-bearing piece of drawdown control \u2014 without it, big tiers blow up during the 2026-05-16 EM-cursed-stripe loss cluster."
+    "notes": "Was the best in-sample Pareto point (+$2293 / -$337 DD on 245 trades). Walk-forward (04_walk_forward.py) reveals -$858 OOS on 215 trades. The bucket WRs are noise at this N; deploying this would be expected-value negative."
   },
   "buckets": [
+    {
+      "key": {
+        "engine_family": "shadow_velo",
+        "leg_or_bar": "down",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "flat"
+      },
+      "n": 54,
+      "WR_engine": 0.6667,
+      "WR_effective": 0.6667,
+      "avg_entry_c": 57.3,
+      "edge_per_ct_c": 7.37,
+      "kelly_fraction": 0.1811,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "late",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "flat"
+      },
+      "n": 85,
+      "WR_engine": 0.4824,
+      "WR_effective": 0.5176,
+      "avg_entry_c": 54.06,
+      "edge_per_ct_c": 3.824,
+      "kelly_fraction": 0.0734,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "shadow_velo",
+        "leg_or_bar": "up",
+        "entry_bucket": "mid",
+        "sv60_bucket": "flat"
+      },
+      "n": 15,
+      "WR_engine": 0.5333,
+      "WR_effective": 0.4667,
+      "avg_entry_c": 75.07,
+      "edge_per_ct_c": 19.733,
+      "kelly_fraction": 0.2701,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "shadow_velo",
+        "leg_or_bar": "down",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 24,
+      "WR_engine": 0.7083,
+      "WR_effective": 0.7083,
+      "avg_entry_c": 58.04,
+      "edge_per_ct_c": 10.792,
+      "kelly_fraction": 0.2701,
+      "action": "KEEP"
+    },
     {
       "key": {
         "engine_family": "pine",
@@ -89,12 +170,102 @@
         "entry_bucket": "mid",
         "sv60_bucket": "mom_lo"
       },
-      "n": 11,
-      "WR_engine": 0.6364,
-      "WR_effective": 0.3636,
-      "avg_entry_c": 78.55,
-      "edge_per_ct_c": 12.909,
-      "kelly_fraction": 0.1686,
+      "n": 36,
+      "WR_engine": 0.6944,
+      "WR_effective": 0.3056,
+      "avg_entry_c": 78.42,
+      "edge_per_ct_c": 6.972,
+      "kelly_fraction": 0.0912,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "sweet",
+        "entry_bucket": "mid",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 13,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 78.69,
+      "edge_per_ct_c": 19.308,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "early",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "flat"
+      },
+      "n": 6,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 67.33,
+      "edge_per_ct_c": 30.667,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "early",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 6,
+      "WR_engine": 0.3333,
+      "WR_effective": 0.6667,
+      "avg_entry_c": 65.33,
+      "edge_per_ct_c": 30.0,
+      "kelly_fraction": 0.4737,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "sweet",
+        "entry_bucket": "mid",
+        "sv60_bucket": "flat"
+      },
+      "n": 9,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 78.22,
+      "edge_per_ct_c": 19.778,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "shadow_velo",
+        "leg_or_bar": "down",
+        "entry_bucket": "mid",
+        "sv60_bucket": "flat"
+      },
+      "n": 6,
+      "WR_engine": 0.5,
+      "WR_effective": 0.5,
+      "avg_entry_c": 76.83,
+      "edge_per_ct_c": 24.833,
+      "kelly_fraction": 0.3318,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "early",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 10,
+      "WR_engine": 0.7,
+      "WR_effective": 0.3,
+      "avg_entry_c": 86.7,
+      "edge_per_ct_c": 14.7,
+      "kelly_fraction": 0.1736,
       "action": "INVERT"
     },
     {
@@ -115,15 +286,120 @@
     {
       "key": {
         "engine_family": "pine",
-        "leg_or_bar": "sweet",
+        "leg_or_bar": "early",
+        "entry_bucket": "mid",
+        "sv60_bucket": "flat"
+      },
+      "n": 25,
+      "WR_engine": 0.72,
+      "WR_effective": 0.28,
+      "avg_entry_c": 78.96,
+      "edge_per_ct_c": 4.96,
+      "kelly_fraction": 0.0644,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "shadow_velo",
+        "leg_or_bar": "down",
         "entry_bucket": "mid",
         "sv60_bucket": "mom_lo"
+      },
+      "n": 11,
+      "WR_engine": 0.6364,
+      "WR_effective": 0.3636,
+      "avg_entry_c": 76.82,
+      "edge_per_ct_c": 11.182,
+      "kelly_fraction": 0.1495,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "ladder",
+        "leg_or_bar": "NA",
+        "entry_bucket": "mid",
+        "sv60_bucket": "NA"
+      },
+      "n": 8,
+      "WR_engine": 0.625,
+      "WR_effective": 0.375,
+      "avg_entry_c": 78.25,
+      "edge_per_ct_c": 13.75,
+      "kelly_fraction": 0.1803,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "shadow_velo",
+        "leg_or_bar": "up",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 27,
+      "WR_engine": 0.5185,
+      "WR_effective": 0.4815,
+      "avg_entry_c": 57.59,
+      "edge_per_ct_c": 3.741,
+      "kelly_fraction": 0.0673,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "early",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "mom_hi"
+      },
+      "n": 10,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 88.1,
+      "edge_per_ct_c": 9.9,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "early",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "flat"
+      },
+      "n": 9,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 87.0,
+      "edge_per_ct_c": 11.0,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "sweet",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "flat"
       },
       "n": 3,
       "WR_engine": 1.0,
       "WR_effective": 1.0,
-      "avg_entry_c": 79.67,
-      "edge_per_ct_c": 18.333,
+      "avg_entry_c": 65.33,
+      "edge_per_ct_c": 32.667,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "late",
+        "entry_bucket": "mid",
+        "sv60_bucket": "rev"
+      },
+      "n": 4,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 74.75,
+      "edge_per_ct_c": 23.25,
       "kelly_fraction": 1.0,
       "action": "KEEP"
     },
@@ -144,6 +420,51 @@
     },
     {
       "key": {
+        "engine_family": "ladder",
+        "leg_or_bar": "NA",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "NA"
+      },
+      "n": 3,
+      "WR_engine": 0.6667,
+      "WR_effective": 0.3333,
+      "avg_entry_c": 86.0,
+      "edge_per_ct_c": 17.333,
+      "kelly_fraction": 0.2063,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "sweet",
+        "entry_bucket": "mid",
+        "sv60_bucket": "mom_hi"
+      },
+      "n": 3,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 80.67,
+      "edge_per_ct_c": 17.333,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "late",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "flat"
+      },
+      "n": 15,
+      "WR_engine": 0.9333,
+      "WR_effective": 0.9333,
+      "avg_entry_c": 88.0,
+      "edge_per_ct_c": 3.333,
+      "kelly_fraction": 0.3333,
+      "action": "KEEP"
+    },
+    {
+      "key": {
         "engine_family": "v5",
         "leg_or_bar": "PINE",
         "entry_bucket": "high",
@@ -160,32 +481,47 @@
     {
       "key": {
         "engine_family": "pine",
-        "leg_or_bar": "late",
-        "entry_bucket": "underdog",
-        "sv60_bucket": "flat"
+        "leg_or_bar": "sweet",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "mom_lo"
       },
-      "n": 9,
-      "WR_engine": 0.4444,
-      "WR_effective": 0.5556,
-      "avg_entry_c": 50.67,
-      "edge_per_ct_c": 4.222,
-      "kelly_fraction": 0.0868,
-      "action": "INVERT"
+      "n": 5,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 88.6,
+      "edge_per_ct_c": 9.4,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "shadow_velo",
+        "leg_or_bar": "up",
+        "entry_bucket": "mid",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 6,
+      "WR_engine": 0.8333,
+      "WR_effective": 0.8333,
+      "avg_entry_c": 74.5,
+      "edge_per_ct_c": 6.833,
+      "kelly_fraction": 0.2908,
+      "action": "KEEP"
     },
     {
       "key": {
         "engine_family": "pine",
-        "leg_or_bar": "late",
-        "entry_bucket": "mid",
+        "leg_or_bar": "sweet",
+        "entry_bucket": "cursed",
         "sv60_bucket": "flat"
       },
       "n": 3,
-      "WR_engine": 0.6667,
-      "WR_effective": 0.3333,
-      "avg_entry_c": 77.67,
-      "edge_per_ct_c": 9.0,
-      "kelly_fraction": 0.1189,
-      "action": "INVERT"
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 85.67,
+      "edge_per_ct_c": 12.333,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
     },
     {
       "key": {
@@ -219,6 +555,36 @@
     },
     {
       "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "early",
+        "entry_bucket": "high",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 4,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 93.5,
+      "edge_per_ct_c": 4.5,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "sweet",
+        "entry_bucket": "high",
+        "sv60_bucket": "mom_hi"
+      },
+      "n": 3,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 92.33,
+      "edge_per_ct_c": 5.667,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
         "engine_family": "v5",
         "leg_or_bar": "LATE",
         "entry_bucket": "high",
@@ -234,6 +600,21 @@
     },
     {
       "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "late",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 6,
+      "WR_engine": 0.8333,
+      "WR_effective": 0.1667,
+      "avg_entry_c": 87.5,
+      "edge_per_ct_c": 2.167,
+      "kelly_fraction": 0.0253,
+      "action": "INVERT"
+    },
+    {
+      "key": {
         "engine_family": "v5",
         "leg_or_bar": "LATE",
         "entry_bucket": "underdog",
@@ -246,6 +627,51 @@
       "edge_per_ct_c": 2.333,
       "kelly_fraction": 0.0654,
       "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "shadow_velo",
+        "leg_or_bar": "up",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "flat"
+      },
+      "n": 41,
+      "WR_engine": 0.5854,
+      "WR_effective": 0.5854,
+      "avg_entry_c": 56.39,
+      "edge_per_ct_c": 0.146,
+      "kelly_fraction": 0.0035,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "late",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 21,
+      "WR_engine": 0.5714,
+      "WR_effective": 0.4286,
+      "avg_entry_c": 59.33,
+      "edge_per_ct_c": 0.19,
+      "kelly_fraction": 0.0033,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "late",
+        "entry_bucket": "high",
+        "sv60_bucket": "flat"
+      },
+      "n": 12,
+      "WR_engine": 0.9167,
+      "WR_effective": 0.0833,
+      "avg_entry_c": 94.0,
+      "edge_per_ct_c": 0.333,
+      "kelly_fraction": 0.0036,
+      "action": "INVERT"
     },
     {
       "key": {

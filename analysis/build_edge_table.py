@@ -85,10 +85,11 @@ def main():
     n_invert = sum(1 for x in buckets if x['action'] == 'INVERT')
     trades_covered = sum(x['n'] for x in buckets)
 
-    # Recommended discrete sizing tiers from the simulation analysis.
-    # Tested as best-Pareto in analysis/03_sizing_simulation.py.
+    # Sizing scheme RETAINED FOR REFERENCE but not recommended for deployment
+    # given the OOS validation failure. See oos_warning above.
     sizing_recommendation = dict(
         scheme='dollar-at-risk discrete tiers + bucket streak halt',
+        deployment_status='NOT_RECOMMENDED — OOS validation failed',
         slip_cents=SLIP,
         risk_tiers_c=[
             dict(min_edge_per_ct_c=30, dollars_at_risk=12.0),
@@ -100,10 +101,10 @@ def main():
         min_edge_per_ct_c=5,
         streak_halt_losses=2,
         streak_cooldown_trades=10,
-        notes=('Risk-tier dollars scaled to a small starting bankroll. '
-               'Scale linearly with bankroll. The streak halt is the load-bearing '
-               'piece of drawdown control — without it, big tiers blow up during '
-               'the 2026-05-16 EM-cursed-stripe loss cluster.'),
+        notes=('Was the best in-sample Pareto point (+$2293 / -$337 DD on 245 trades). '
+               'Walk-forward (04_walk_forward.py) reveals -$858 OOS on 215 trades. '
+               'The bucket WRs are noise at this N; deploying this would be '
+               'expected-value negative.'),
     )
 
     out = dict(
@@ -112,6 +113,16 @@ def main():
         generated_at_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
         slip_cents=SLIP,
         min_bucket_n=args.min_n,
+        oos_validation_status='FAILED',
+        oos_warning=(
+            'Walk-forward validation (see analysis/04_walk_forward.py) shows '
+            'every sizing-config OOS-negative. The bucket-conditional edges '
+            'do not generalize: in-sample +$2,293 -> OOS -$858 on 215 trades. '
+            'DO NOT DEPLOY this table as a live trading strategy. Use only as '
+            'a diagnostic of how the engines behaved in-sample. The structural '
+            'findings (slippage, fill-rate skew, engines net-negative) remain '
+            'valid; the specific bucket edges do not.'
+        ),
         input_fingerprint=fingerprint_inputs(),
         totals=dict(
             n_settles=n_total,
