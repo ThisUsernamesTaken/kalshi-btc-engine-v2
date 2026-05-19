@@ -169,6 +169,54 @@ docs/
   MODEL_VETO_INTEGRATION.md        (NEW)
 ```
 
+## Additional findings (added later in session)
+
+### Veto+flip hybrid
+
+`analysis/17_veto_with_flip.py` extends the veto: when model disagrees
+by `>= flip_threshold`, instead of skipping, FLIP to the opposite side.
+
+| Strategy | Mean swing | 90% CI | Bootstrap > 0 |
+|---|---|---|---|
+| Veto-only (skip ≥5c) | +$92 | [+$35, +$156] | 99.9% |
+| **Veto+flip (skip ≥8c, flip ≥30c)** | **+$173** | **[+$68, +$296]** | **99.9%** |
+
+Best config nearly doubles mean swing while maintaining the same 99.9%
+positive-resample rate. Caveat: only 11 flip trades in sample (8W/3L);
+larger N needed to confirm flip robustness.
+
+Roll-out order (revised):
+  1. Veto-only first (simpler — just a filter, no opposite-side path)
+  2. After 2 weeks of veto paper data validates the loser-flag-rate,
+     consider adding flip layer (requires NEW order-placement path)
+
+### Sigma sensitivity
+
+`analysis/16_veto_sigma_sensitivity.py`: tested veto effectiveness across
+sigma_annualized from 0.15 to 1.50. Every sigma in that range produces
+positive swing $60-$87. The strategy doesn't depend on getting sigma
+exactly right. Adaptive 5-min realized vol gives the best result (+$91).
+
+### Veto-shadow operational monitor
+
+`scripts/live/veto_shadow_monitor.py` tails any live trader log and
+emits `veto_shadow_decision` events for each trigger. Read-only on input,
+append-only on output, safe alongside live trading.
+
+Per-leg breakdown on v5_unified historical log:
+
+| Leg | Triggers | Would-skip rate |
+|---|---|---|
+| EARLIER_MODERATE | 60 | 43.3% |
+| LATE | 77 | 28.6% |
+| T-30 SNIPER | 34 | not evaluable (missing fields) |
+
+### `check_model_prob` CLI
+
+`scripts/live/check_model_prob.py` — ad-hoc command-line tool for
+inspecting model probability and veto verdict for any given
+(spot, strike, secs-to-close, sigma, engine_side, engine_price) tuple.
+
 ## What to do next (recommended)
 
 1. **Apply the veto integration patch in SHADOW mode** — log

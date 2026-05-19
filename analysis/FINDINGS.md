@@ -13,7 +13,8 @@ Kalshi REST settlement cache (`strikes_cache.json`).
 | Pine bar 5-6 + entry 92c+ filter | +$40 / 42 tr (chrono) | n/a | weak signal at small N |
 | Fair-value model (raw, taker, 10c, 1 day) | +$8.29 / 15 tr | n/a | early signal, 1 day |
 | Fair-value model (raw, MAKER rest, 5c, 5 days) | n/a | +$129.50 / 275 tr | promising, CI straddles 0 |
-| **Fair-value model as VETO layer on live engines** | n/a | **+$91.62 swing / 131 tr / 5 days OOS** | **BEST DEPLOYABLE** — CI fully positive, 100% bootstrap resamples positive |
+| Fair-value model as VETO layer on live engines | n/a | +$91.62 swing / 131 tr / 5 days OOS | **CONSERVATIVE DEPLOY** — CI [+$35, +$156], 99.9% bootstrap positive |
+| **Fair-value model VETO + FLIP hybrid** (skip≥8c, flip≥30c) | n/a | **+$173 swing / 131 tr / 5 days OOS** | **HIGH-EV** — CI [+$68, +$296], 99.9% bootstrap positive, needs opposite-side execution |
 
 ## Structural facts (verified — independent of strategy choice)
 
