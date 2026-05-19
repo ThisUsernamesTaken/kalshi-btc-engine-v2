@@ -130,13 +130,30 @@ tests/
 5. **After 1 week clean**: consider re-enabling LATE with veto, or
    evaluating the flip layer.
 
+## Bugs found and fixed during integration testing
+
+1. **Unit bug (commit `281e12a`)**: the engine's `realized_vol_5m`
+   returns `sigma_per_sec_log × sqrt(60) × 100` (% per √min), NOT
+   annualized vol. The original integration passed it directly as
+   `sigma_annualized` to the model, treating BTC as ~10% vol when
+   it's ~50%. Fixed with a `_rv5m_to_sigma_ann` helper applying the
+   `× 7.2498` conversion. Post-fix audit shows swing improved from
+   +$19 → +$30 on historical shadow data.
+
+2. **RV-availability gap (commit `b477860`)**: `realized_vol_5m`
+   requires ≥30 samples spanning ≥2.5 min, so ~70% of EM triggers in
+   the live log have `rv_5m=None` (shortly after watchdog restarts).
+   Added `realized_vol_best_effort` which falls back to 120s and
+   then 60s windows. After 60s of BTC buffer fill, the veto has a
+   usable RV estimate at every trigger.
+
 ## Honest assessment
 
 The veto layer is the **first non-overfit, OOS-validated, deployment-
 ready positive-EV finding** in the analysis pipeline. The math (BRTI
 60s averaging mean-reversion captured by the gradient engine's
 settlement_fair_probability) is structurally sound. The bootstrap CIs
-say the swing is real, not noise. The integration is minimal (~150
+say the swing is real, not noise. The integration is minimal (~180
 lines), safe-by-default (`--veto-mode off`), and reversible.
 
 It's not a money printer. Even at +$92 OOS swing over 131 trades, the
@@ -146,6 +163,12 @@ current production flags (T-30 sniper only), the veto rarely fires
 because sniper entries usually agree with the model. The veto's value
 lands when EARLIER_MODERATE re-enables.
 
+**Realistic production expectations** (after fixing the rv_5m unit bug):
+the historical shadow re-run shows ~+$30 swing on 46 settled+vetoed
+trades — less than the OOS analysis's +$92 because the historical
+trigger events sometimes lacked rv_5m. With the new best-effort RV
+fallback in the live code, the LIVE veto should get closer to the
+OOS +$92 since it has the live BTC buffer. Audit weekly.
+
 The biggest open question: does the BRTI mean-reversion regime persist?
-Audit weekly. If the loser-flag-rate on EM drops below 80%, pause and
-re-derive.
+If the loser-flag-rate on EM drops below 80%, pause and re-derive.
