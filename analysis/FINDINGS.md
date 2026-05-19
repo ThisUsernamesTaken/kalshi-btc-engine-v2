@@ -248,3 +248,46 @@ $py = "C:\Users\coleb\AppData\Local\Python\bin\python.exe"
 - The bucket-conditional edge table approach as a trading rule
 - RV regime FLIP (already tried; lost 5/5 live)
 - LATE leg as currently structured (structurally −EV in v5)
+
+## Veto-shadow operational findings (2026-05-19)
+
+Running `scripts/live/veto_shadow_monitor.py --from-start` on the
+v5_unified historical log yields a per-leg breakdown:
+
+| Leg | Triggers | Would skip | Skip rate | By side (skip) |
+|---|---|---|---|---|
+| EARLIER_MODERATE | 60 | 26 | **43.3%** | 13 YES, 13 NO |
+| LATE | 77 | 22 | **28.6%** | 13 YES, 9 NO |
+| T-30 SNIPER | 34 | n/a | — | — (missing fields) |
+
+Findings:
+- EARLIER_MODERATE has the highest skip rate, consistent with that leg
+  being the loss-driver. Deploy veto here first.
+- LATE skip rate 28.6% is lower but still meaningful.
+- T-30 SNIPER triggers in `live_v5_unified.py` don't currently log
+  `btc_now` or `strike` — the veto shadow correctly skips them as
+  `missing_required_fields`. To enable veto on snipers, a 2-line patch
+  to `live_v5_unified.py` is needed to populate those fields in the
+  `t30_sniper_trigger` event.
+
+## Deliverables in this folder
+
+| File | Purpose |
+|---|---|
+| `FINDINGS.md` | This document |
+| `AUTONOMOUS_SESSION_2026_05_19.md` | Chronological log of the autonomous session |
+| `01_*.py` through `15_*.py` | Reproducible analysis scripts |
+| `fetch_strikes.py` | Strike fetcher (idempotent) |
+| `strikes_cache.json` | 351 cached Kalshi REST responses |
+| `edge_table.json` | OOS-FAILED bucket table (diagnostic only) |
+| `common.py` / `build_edge_table.py` | Shared infrastructure |
+
+## Deployable artifacts (outside `analysis/`)
+
+| File | Purpose |
+|---|---|
+| `src/kalshi_btc_engine_v2/model_veto.py` | Drop-in veto module |
+| `tests/test_model_veto.py` | 8 passing unit tests |
+| `docs/MODEL_VETO_INTEGRATION.md` | Where/how to wire it into live_v5_unified |
+| `scripts/live/veto_shadow_monitor.py` | Live-tail shadow auditor |
+| `scripts/live/check_model_prob.py` | Ad-hoc probability/veto CLI |
