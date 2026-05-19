@@ -285,6 +285,7 @@ def main():
     import sys
     limit = int(sys.argv[1]) if len(sys.argv) > 1 else len(markets)
     threshold = int(sys.argv[2]) if len(sys.argv) > 2 else 5
+    save_path = Path(sys.argv[3]) if len(sys.argv) > 3 else None
     con = sqlite3.connect(f'file:{DB}?mode=ro', uri=True)
     all_trades = []
     import time
@@ -302,9 +303,32 @@ def main():
         return
     n = len(all_trades); w = sum(1 for t in all_trades if t['won'])
     net = sum(t['net'] for t in all_trades)
-    print(f'\nResults (first 30 markets):  trades={n}  WR={w/n*100:.1f}%  net=${net/100:+.2f}')
+    print(f'\nResults:  trades={n}  WR={w/n*100:.1f}%  net=${net/100:+.2f}')
     print(f'  Avg ${net/n/100:+.3f}/tr')
-    print(f'  Markets that fired: {len(set(t["ticker"] for t in all_trades))}/{min(30, len(markets))}')
+    print(f'  Markets that fired: {len(set(t["ticker"] for t in all_trades))}/{limit}')
+    # Per entry-offset breakdown
+    from collections import defaultdict
+    by_off = defaultdict(lambda: [0, 0, 0])
+    for t in all_trades:
+        b = by_off[t['offset_s']]; b[0]+=1; b[1]+=t['won']; b[2]+=t['net']
+    print(f'\n  Per entry-offset (secs-to-close at trigger):')
+    print(f'  {"offset_s":>9s} {"n":>4s} {"WR":>6s} {"net_$":>9s}')
+    for off in sorted(by_off.keys(), reverse=True):
+        nn, ww, ne = by_off[off]
+        print(f'  {off:>9d} {nn:>4d} {ww/nn*100:>5.1f}% ${ne/100:>+8.2f}')
+    # Per side
+    by_side = defaultdict(lambda: [0, 0, 0])
+    for t in all_trades:
+        b = by_side[t['side']]; b[0]+=1; b[1]+=t['won']; b[2]+=t['net']
+    print(f'\n  Per side:')
+    for s, (nn, ww, ne) in by_side.items():
+        print(f'    {s:3s}  n={nn:>3d}  WR={ww/nn*100:>5.1f}%  net=${ne/100:>+7.2f}')
+    if save_path:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        with save_path.open('w', encoding='utf-8') as f:
+            for t in all_trades:
+                f.write(json.dumps(t, default=str) + '\n')
+        print(f'\nSaved {n} trades to {save_path}')
 
 
 if __name__ == '__main__':
