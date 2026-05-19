@@ -428,6 +428,35 @@ class BTCPriceBuffer:
         var = sum((r - mean) ** 2 for r in rets) / len(rets)
         return math.sqrt(var) * math.sqrt(60) * 100
 
+    def realized_vol_best_effort(self, now_ms: int) -> float | None:
+        """Same units as realized_vol_5m but accepts shorter history.
+        Used by the veto layer when 5-min vol isn't yet available
+        (e.g., shortly after watchdog restart). Tries 300s -> 120s -> 60s
+        windows, returning the first one with at least 10 returns."""
+        for win_s in (300, 120, 60):
+            v = self._realized_vol_window(now_ms, win_s, min_samples=10)
+            if v is not None:
+                return v
+        return None
+
+    def _realized_vol_window(self, now_ms: int, window_s: int, min_samples: int) -> float | None:
+        if len(self._buf) < min_samples + 1:
+            return None
+        latest_ts, _ = self._buf[-1]
+        cutoff_ts = latest_ts - window_s * 1000
+        prices = [p for ts, p in self._buf if ts >= cutoff_ts and p > 0]
+        if len(prices) < min_samples + 1:
+            return None
+        rets: list[float] = []
+        for i in range(1, len(prices)):
+            if prices[i-1] > 0 and prices[i] > 0:
+                rets.append(math.log(prices[i] / prices[i-1]))
+        if len(rets) < min_samples:
+            return None
+        mean = sum(rets) / len(rets)
+        var = sum((r - mean) ** 2 for r in rets) / len(rets)
+        return math.sqrt(var) * math.sqrt(60) * 100
+
 
 async def btc_poller(
     buf: BTCPriceBuffer, session: aiohttp.ClientSession, log_fp, stop: dict,
@@ -1367,7 +1396,9 @@ async def main_async() -> int:
                                         # === MODEL VETO LAYER (EARLIER_MODERATE) ===
                                         if args.veto_mode != "off":
                                             try:
-                                                _v_sigma = _rv5m_to_sigma_ann(em_rv5)
+                                                # Use full 5-min RV if available, else best-effort short-window fallback
+                                                _v_rv5 = em_rv5 if em_rv5 is not None else btc_buf.realized_vol_best_effort(now_ms)
+                                                _v_sigma = _rv5m_to_sigma_ann(_v_rv5)
                                                 _v_skip, _v_p, _v_reason = _veto_decision(
                                                     spot_btc=float(btc_now_em),
                                                     strike=float(strike_em),
@@ -1651,6 +1682,8 @@ async def main_async() -> int:
                                     try:
                                         # Compute live RV from the BTC buffer at t30 site
                                         _t30_rv5 = btc_buf.realized_vol_5m(now_ms)
+                                        if _t30_rv5 is None:
+                                            _t30_rv5 = btc_buf.realized_vol_best_effort(now_ms)
                                         _v_sigma_t30 = _rv5m_to_sigma_ann(_t30_rv5)
                                         _v_skip_t30, _v_p_t30, _v_reason_t30 = _veto_decision(
                                             spot_btc=float(btc_now_t30),
@@ -2474,7 +2507,8 @@ async def main_async() -> int:
                         # === MODEL VETO LAYER (LATE) ===
                         if args.veto_mode != "off" and btc_now and strike > 0:
                             try:
-                                _v_sigma = _rv5m_to_sigma_ann(late_rv5)
+                                _v_rv5 = late_rv5 if late_rv5 is not None else btc_buf.realized_vol_best_effort(now_ms)
+                                _v_sigma = _rv5m_to_sigma_ann(_v_rv5)
                                 _v_skip, _v_p, _v_reason = _veto_decision(
                                     spot_btc=float(btc_now),
                                     strike=float(strike),
