@@ -14,13 +14,14 @@ and what to expect.
 | **OOS validation** | `analysis/13`, `14`: +$92 swing, CI [+$26, +$172], 99.9% bootstrap-positive |
 | **Realistic-fill caveat** | `analysis/10`: standalone maker strategy breaks even at L2 realism; veto layer unaffected (operates on trades engine already places at taker fees) |
 
-## Three modes
+## Four modes
 
 | Mode | Behavior | When to use |
 |---|---|---|
 | `--veto-mode off` | Legacy behavior. No veto computation. | Default. Same as pre-veto-patch behavior. |
-| `--veto-mode shadow` | Computes veto decision for every trigger, logs a `model_veto` event with `would_skip` flag, but **never skips**. | **Recommended first step.** Run for 24 hours to validate the veto fires sensibly in production. |
-| `--veto-mode skip` | Computes + logs + actually **skips** trades where the model disagrees with engine direction by ≥ `--veto-threshold` cents. | After shadow validation confirms the veto fires at ~30-50% rate matching OOS. |
+| `--veto-mode shadow` | Computes veto decision for every trigger, logs a `model_veto` event with `action` field (KEEP/SKIP/FLIP), but **never skips or flips**. | **Recommended first step.** Run for 24 hours to validate the veto fires sensibly in production. |
+| `--veto-mode skip` | Computes + logs + actually **skips** trades where the model disagrees by ≥ `--veto-threshold` cents (default 5c). No flip. | Conservative live veto. After shadow validates. OOS swing +$92 / CI [+$26, +$172]. |
+| `--veto-mode flip` | Like `skip`, but disagreements ≥ `--veto-flip-threshold` (default 30c) place an OPPOSITE-side order instead of skipping. | Higher-EV variant. OOS swing +$173 / CI [+$68, +$296]. Requires opposite-side execution path. Validate in shadow ≥24h first. |
 
 ## Quick-start: shadow mode
 
@@ -42,8 +43,18 @@ $py = "C:\Users\coleb\AppData\Local\Python\bin\python.exe"
 
 Or via the watchdog (auto-restart on crash):
 ```cmd
-C:\Trading\kalshi-btc-engine-v2\scripts\live\watchdog_v5_unified_veto.cmd
+C:\Trading\kalshi-btc-engine-v2\scripts\live\watchdog_v5_unified_veto.cmd          (skip-only variant)
+C:\Trading\kalshi-btc-engine-v2\scripts\live\watchdog_v5_unified_veto_flip.cmd     (skip+flip variant)
 ```
+
+Both watchdogs run in `--veto-mode shadow` by default. To activate live veto:
+- For the skip-only variant: edit `watchdog_v5_unified_veto.cmd`, change
+  `--veto-mode shadow` to `--veto-mode skip`.
+- For the skip+flip variant: edit `watchdog_v5_unified_veto_flip.cmd`,
+  change `--veto-mode shadow` to `--veto-mode flip`.
+
+The flip variant adds an opposite-side order path that requires its own
+24h shadow validation before going live.
 
 ## Quick-start: live veto (after shadow validation)
 

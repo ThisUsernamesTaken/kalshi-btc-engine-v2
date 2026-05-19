@@ -90,10 +90,12 @@ try:
     if str(_V2_SRC) not in sys.path:
         sys.path.insert(0, str(_V2_SRC))
     from kalshi_btc_engine_v2.model_veto import veto_decision as _veto_decision  # noqa: E402
+    from kalshi_btc_engine_v2.model_veto import model_action_decision as _model_action  # noqa: E402
     _VETO_AVAILABLE = True
 except Exception as _veto_import_err:  # noqa: BLE001
     _VETO_AVAILABLE = False
     _veto_decision = None  # type: ignore[assignment]
+    _model_action = None  # type: ignore[assignment]
     _veto_import_error = repr(_veto_import_err)
 else:
     _veto_import_error = None
@@ -642,20 +644,32 @@ async def main_async() -> int:
                         help="Disable the LATE leg (leader_at_min12 at T-180s). "
                         "Backtest: structurally -EV in test set. Recommended "
                         "to combine with --enable-t30-sniper which replaces it.")
-    parser.add_argument("--veto-mode", choices=("off", "shadow", "skip"),
+    parser.add_argument("--veto-mode", choices=("off", "shadow", "skip", "flip"),
                         default="off",
                         help="Fair-value-model veto layer. 'off' = no veto "
-                        "(default). 'shadow' = compute and log model_veto "
-                        "events but never skip. 'skip' = actually skip "
-                        "trades the model disagrees with. Backed by "
-                        "analysis/13_model_vs_engine.py + 14_veto_robustness "
-                        "(OOS swing +$92, 95%% CI [+$26, +$172], 99.9%% "
-                        "bootstrap-positive across 131 OOS trades).")
+                        "(default). 'shadow' = compute + log model_veto "
+                        "events but never skip/flip. 'skip' = actually skip "
+                        "trades where model disagrees by >= veto-threshold. "
+                        "'flip' = skip in [veto-threshold, flip-threshold) "
+                        "and place opposite-side order at >= flip-threshold. "
+                        "OOS validation: skip mode +$92 swing CI [+$26,+$172] "
+                        "99.9%% bootstrap-positive; flip mode +$173 swing "
+                        "CI [+$68,+$296] 99.9%% bootstrap-positive (n=131, "
+                        "5 days). See analysis/17 + analysis/18.")
     parser.add_argument("--veto-threshold", type=int, default=5,
                         help="Disagreement threshold in cents for the veto "
                         "to fire (default 5). Sensitivity tested in "
                         "analysis/14: all thresholds 2-20c produce "
                         "positive OOS swing.")
+    parser.add_argument("--veto-flip-threshold", type=int, default=30,
+                        help="When --veto-mode=flip, disagreements >= this "
+                        "many cents trigger an OPPOSITE-SIDE order instead "
+                        "of skipping. Default 30c (the OOS-optimal value "
+                        "per analysis/18: mean swing $+173, CI [$+68, "
+                        "$+296]).")
+    parser.add_argument("--veto-flip-slip", type=int, default=2,
+                        help="Slippage in cents added to the opposite-side "
+                        "ask when placing a flip order (default 2).")
     args = parser.parse_args()
     if args.veto_mode != "off" and not _VETO_AVAILABLE:
         print(f"[live-unified] WARNING: --veto-mode={args.veto_mode} but "
@@ -1396,33 +1410,43 @@ async def main_async() -> int:
                                         # === MODEL VETO LAYER (EARLIER_MODERATE) ===
                                         if args.veto_mode != "off":
                                             try:
-                                                # Use full 5-min RV if available, else best-effort short-window fallback
                                                 _v_rv5 = em_rv5 if em_rv5 is not None else btc_buf.realized_vol_best_effort(now_ms)
                                                 _v_sigma = _rv5m_to_sigma_ann(_v_rv5)
-                                                _v_skip, _v_p, _v_reason = _veto_decision(
+                                                # In skip mode, disable flip by passing a huge flip_threshold.
+                                                # In shadow mode, compute as if flip were on (audit only).
+                                                _flip_thr = (args.veto_flip_threshold
+                                                             if args.veto_mode in ("flip", "shadow")
+                                                             else 9999)
+                                                _action, _v_p, _v_reason, _flip = _model_action(
                                                     spot_btc=float(btc_now_em),
                                                     strike=float(strike_em),
                                                     seconds_to_close=float(secs_to_close),
                                                     sigma_annualized=float(_v_sigma),
                                                     engine_side=em_side,
                                                     engine_price_cents=int(em_entry_ask),
-                                                    threshold_cents=int(args.veto_threshold),
+                                                    skip_threshold_cents=int(args.veto_threshold),
+                                                    flip_threshold_cents=int(_flip_thr),
+                                                    yes_ask_cents=int(yes_ask),
+                                                    no_ask_cents=int(no_ask),
+                                                    flip_slip_cents=int(args.veto_flip_slip),
                                                 )
                                                 log_fp.write(json.dumps({
                                                     "kind": "model_veto",
                                                     "ts_ms": now_ms, "ticker": ticker,
                                                     "stage": "earlier_moderate",
                                                     "mode": args.veto_mode,
-                                                    "would_skip": _v_skip,
+                                                    "action": _action,
                                                     "p_model_yes": _v_p,
                                                     "engine_side": em_side,
                                                     "engine_price_cents": int(em_entry_ask),
                                                     "sigma_used": float(_v_sigma),
-                                                    "threshold_cents": int(args.veto_threshold),
+                                                    "veto_threshold_cents": int(args.veto_threshold),
+                                                    "flip_threshold_cents": int(_flip_thr),
+                                                    "flip_details": _flip,
                                                     "reason": _v_reason,
                                                 }, default=str) + "\n")
                                                 log_fp.flush()
-                                                if args.veto_mode == "skip" and _v_skip:
+                                                if args.veto_mode in ("skip", "flip") and _action == "SKIP":
                                                     log_fp.write(json.dumps({
                                                         "kind": "earlier_moderate_skip",
                                                         "ts_ms": now_ms, "ticker": ticker,
@@ -1432,8 +1456,98 @@ async def main_async() -> int:
                                                     log_fp.flush()
                                                     state["earlier_moderate_state"] = "done"
                                                     print(
-                                                        f"[live-unified] EARLIER-MOD VETO "
+                                                        f"[live-unified] EARLIER-MOD VETO-SKIP "
                                                         f"{ticker} {em_side}@{em_entry_ask}c "
+                                                        f"p_model={_v_p:.3f}", flush=True,
+                                                    )
+                                                    continue
+                                                if args.veto_mode == "flip" and _action == "FLIP":
+                                                    # Place opposite-side IOC at flip['limit_cents'].
+                                                    _flip_side = _flip['side']
+                                                    _flip_limit = int(_flip['limit_cents'])
+                                                    log_fp.write(json.dumps({
+                                                        "kind": "model_veto_flip_attempt",
+                                                        "ts_ms": now_ms, "ticker": ticker,
+                                                        "stage": "earlier_moderate",
+                                                        "from_side": em_side,
+                                                        "to_side": _flip_side,
+                                                        "from_price_cents": int(em_entry_ask),
+                                                        "to_limit_cents": _flip_limit,
+                                                        "opposite_ask_cents": _flip.get('opp_ask'),
+                                                        "p_model_yes": _v_p,
+                                                    }, default=str) + "\n")
+                                                    log_fp.flush()
+                                                    base_flip = {
+                                                        "ts_ms": now_ms, "ticker": ticker,
+                                                        "leg": "EARLIER_MODERATE_FLIP",
+                                                        "tier": "MODEL_FLIP",
+                                                        "side": _flip_side,
+                                                        "contracts": em_contracts,
+                                                        "limit_cents": _flip_limit,
+                                                        "engine_intended_side": em_side,
+                                                        "engine_intended_price_cents": int(em_entry_ask),
+                                                        "p_model_yes": _v_p,
+                                                        "veto_reason": _v_reason,
+                                                        "close_ts_ms": close_ts_ms,
+                                                        "secs_to_close": round(secs_to_close, 1),
+                                                        "balance_cents": bal.balance,
+                                                        "dry_run": args.dry_run,
+                                                    }
+                                                    f_fl, avg_fl, oid_fl = await place_ioc(
+                                                        client, ticker, _flip_side,
+                                                        em_contracts, _flip_limit,
+                                                        log_fp, base_flip, args.dry_run,
+                                                    )
+                                                    if f_fl == 0:
+                                                        log_fp.write(json.dumps({
+                                                            "kind": "model_veto_flip_no_fill",
+                                                            "ts_ms": int(time.time()*1000),
+                                                            "ticker": ticker,
+                                                            "stage": "earlier_moderate",
+                                                            "to_side": _flip_side,
+                                                            "limit_cents": _flip_limit,
+                                                            "order_id": oid_fl,
+                                                        }, default=str) + "\n")
+                                                        log_fp.flush()
+                                                        state["earlier_moderate_state"] = "done"
+                                                        print(
+                                                            f"[live-unified] EARLIER-MOD FLIP NO-FILL "
+                                                            f"{ticker} {_flip_side}@{_flip_limit}c",
+                                                            flush=True,
+                                                        )
+                                                        continue
+                                                    # Fill — record as the engine's actual entry.
+                                                    entry_fee_fl = kalshi_taker_fee_cents(avg_fl, f_fl)
+                                                    state.update({
+                                                        "status": "entered",
+                                                        "leg_taken": "EARLIER_MODERATE_FLIP",
+                                                        "side": _flip_side,
+                                                        "contracts": f_fl,
+                                                        "entry_price_cents": avg_fl,
+                                                        "entry_fee_cents": entry_fee_fl,
+                                                        "order_id": oid_fl,
+                                                        "tier": "MODEL_FLIP",
+                                                        "earlier_moderate_state": "done",
+                                                    })
+                                                    log_fp.write(json.dumps({
+                                                        "kind": "model_veto_flip_fill",
+                                                        "ts_ms": int(time.time()*1000),
+                                                        "ticker": ticker,
+                                                        "stage": "earlier_moderate",
+                                                        "side": _flip_side,
+                                                        "contracts": f_fl,
+                                                        "entry_price_cents": avg_fl,
+                                                        "entry_fee_cents": entry_fee_fl,
+                                                        "p_model_yes": _v_p,
+                                                        "engine_intended_side": em_side,
+                                                        "engine_intended_price_cents": int(em_entry_ask),
+                                                        "order_id": oid_fl,
+                                                    }, default=str) + "\n")
+                                                    log_fp.flush()
+                                                    print(
+                                                        f"[live-unified] EARLIER-MOD FLIP-FILL "
+                                                        f"{ticker} eng_wanted={em_side}@{em_entry_ask}c "
+                                                        f"-> we bet {_flip_side}@{avg_fl}c "
                                                         f"p_model={_v_p:.3f}", flush=True,
                                                     )
                                                     continue
@@ -1680,35 +1794,43 @@ async def main_async() -> int:
                                 if (args.veto_mode != "off" and btc_now_t30
                                         and strike_t30 > 0):
                                     try:
-                                        # Compute live RV from the BTC buffer at t30 site
                                         _t30_rv5 = btc_buf.realized_vol_5m(now_ms)
                                         if _t30_rv5 is None:
                                             _t30_rv5 = btc_buf.realized_vol_best_effort(now_ms)
                                         _v_sigma_t30 = _rv5m_to_sigma_ann(_t30_rv5)
-                                        _v_skip_t30, _v_p_t30, _v_reason_t30 = _veto_decision(
+                                        _flip_thr_t = (args.veto_flip_threshold
+                                                       if args.veto_mode in ("flip", "shadow")
+                                                       else 9999)
+                                        _action_t, _v_p_t30, _v_reason_t30, _flip_t = _model_action(
                                             spot_btc=float(btc_now_t30),
                                             strike=float(strike_t30),
                                             seconds_to_close=float(secs_to_close),
                                             sigma_annualized=float(_v_sigma_t30),
                                             engine_side=fav_side_t30,
                                             engine_price_cents=int(fav_ask_t30),
-                                            threshold_cents=int(args.veto_threshold),
+                                            skip_threshold_cents=int(args.veto_threshold),
+                                            flip_threshold_cents=int(_flip_thr_t),
+                                            yes_ask_cents=int(yes_ask),
+                                            no_ask_cents=int(no_ask),
+                                            flip_slip_cents=int(args.veto_flip_slip),
                                         )
                                         log_fp.write(json.dumps({
                                             "kind": "model_veto",
                                             "ts_ms": now_ms, "ticker": ticker,
                                             "stage": "t30_sniper",
                                             "mode": args.veto_mode,
-                                            "would_skip": _v_skip_t30,
+                                            "action": _action_t,
                                             "p_model_yes": _v_p_t30,
                                             "engine_side": fav_side_t30,
                                             "engine_price_cents": int(fav_ask_t30),
                                             "sigma_used": float(_v_sigma_t30),
-                                            "threshold_cents": int(args.veto_threshold),
+                                            "veto_threshold_cents": int(args.veto_threshold),
+                                            "flip_threshold_cents": int(_flip_thr_t),
+                                            "flip_details": _flip_t,
                                             "reason": _v_reason_t30,
                                         }, default=str) + "\n")
                                         log_fp.flush()
-                                        if args.veto_mode == "skip" and _v_skip_t30:
+                                        if args.veto_mode in ("skip", "flip") and _action_t == "SKIP":
                                             log_fp.write(json.dumps({
                                                 "kind": "t30_sniper_skip",
                                                 "ts_ms": now_ms, "ticker": ticker,
@@ -1718,8 +1840,93 @@ async def main_async() -> int:
                                             log_fp.flush()
                                             state["t30_sniper_state"] = "done"
                                             print(
-                                                f"[live-unified] T30 SNIPER VETO {ticker} "
+                                                f"[live-unified] T30 SNIPER VETO-SKIP {ticker} "
                                                 f"{fav_side_t30}@{fav_ask_t30}c "
+                                                f"p_model={_v_p_t30:.3f}", flush=True,
+                                            )
+                                            continue
+                                        if args.veto_mode == "flip" and _action_t == "FLIP":
+                                            _fl_side_t = _flip_t['side']
+                                            _fl_limit_t = int(_flip_t['limit_cents'])
+                                            log_fp.write(json.dumps({
+                                                "kind": "model_veto_flip_attempt",
+                                                "ts_ms": now_ms, "ticker": ticker,
+                                                "stage": "t30_sniper",
+                                                "from_side": fav_side_t30,
+                                                "to_side": _fl_side_t,
+                                                "from_price_cents": int(fav_ask_t30),
+                                                "to_limit_cents": _fl_limit_t,
+                                                "opposite_ask_cents": _flip_t.get('opp_ask'),
+                                                "p_model_yes": _v_p_t30,
+                                            }, default=str) + "\n")
+                                            log_fp.flush()
+                                            base_flip_t = {
+                                                "ts_ms": now_ms, "ticker": ticker,
+                                                "leg": "T30_SNIPER_FLIP", "tier": "MODEL_FLIP",
+                                                "side": _fl_side_t,
+                                                "contracts": T30_SNIPER_CONTRACTS,
+                                                "limit_cents": _fl_limit_t,
+                                                "engine_intended_side": fav_side_t30,
+                                                "engine_intended_price_cents": int(fav_ask_t30),
+                                                "p_model_yes": _v_p_t30,
+                                                "veto_reason": _v_reason_t30,
+                                                "close_ts_ms": close_ts_ms,
+                                                "secs_to_close": round(secs_to_close, 1),
+                                                "balance_cents": bal.balance,
+                                                "dry_run": args.dry_run,
+                                            }
+                                            f_fl_t, avg_fl_t, oid_fl_t = await place_ioc(
+                                                client, ticker, _fl_side_t,
+                                                T30_SNIPER_CONTRACTS, _fl_limit_t,
+                                                log_fp, base_flip_t, args.dry_run,
+                                            )
+                                            if f_fl_t == 0:
+                                                log_fp.write(json.dumps({
+                                                    "kind": "model_veto_flip_no_fill",
+                                                    "ts_ms": int(time.time()*1000),
+                                                    "ticker": ticker, "stage": "t30_sniper",
+                                                    "to_side": _fl_side_t,
+                                                    "limit_cents": _fl_limit_t,
+                                                    "order_id": oid_fl_t,
+                                                }, default=str) + "\n")
+                                                log_fp.flush()
+                                                state["t30_sniper_state"] = "done"
+                                                print(
+                                                    f"[live-unified] T30 SNIPER FLIP NO-FILL "
+                                                    f"{ticker} {_fl_side_t}@{_fl_limit_t}c",
+                                                    flush=True,
+                                                )
+                                                continue
+                                            entry_fee_fl_t = kalshi_taker_fee_cents(avg_fl_t, f_fl_t)
+                                            state.update({
+                                                "status": "entered",
+                                                "leg_taken": "T30_SNIPER_FLIP",
+                                                "side": _fl_side_t,
+                                                "contracts": f_fl_t,
+                                                "entry_price_cents": avg_fl_t,
+                                                "entry_fee_cents": entry_fee_fl_t,
+                                                "order_id": oid_fl_t,
+                                                "tier": "MODEL_FLIP",
+                                                "t30_sniper_state": "done",
+                                            })
+                                            log_fp.write(json.dumps({
+                                                "kind": "model_veto_flip_fill",
+                                                "ts_ms": int(time.time()*1000),
+                                                "ticker": ticker, "stage": "t30_sniper",
+                                                "side": _fl_side_t,
+                                                "contracts": f_fl_t,
+                                                "entry_price_cents": avg_fl_t,
+                                                "entry_fee_cents": entry_fee_fl_t,
+                                                "p_model_yes": _v_p_t30,
+                                                "engine_intended_side": fav_side_t30,
+                                                "engine_intended_price_cents": int(fav_ask_t30),
+                                                "order_id": oid_fl_t,
+                                            }, default=str) + "\n")
+                                            log_fp.flush()
+                                            print(
+                                                f"[live-unified] T30 SNIPER FLIP-FILL "
+                                                f"{ticker} eng_wanted={fav_side_t30}@{fav_ask_t30}c "
+                                                f"-> we bet {_fl_side_t}@{avg_fl_t}c "
                                                 f"p_model={_v_p_t30:.3f}", flush=True,
                                             )
                                             continue
@@ -2509,30 +2716,39 @@ async def main_async() -> int:
                             try:
                                 _v_rv5 = late_rv5 if late_rv5 is not None else btc_buf.realized_vol_best_effort(now_ms)
                                 _v_sigma = _rv5m_to_sigma_ann(_v_rv5)
-                                _v_skip, _v_p, _v_reason = _veto_decision(
+                                _flip_thr_l = (args.veto_flip_threshold
+                                                if args.veto_mode in ("flip", "shadow")
+                                                else 9999)
+                                _action, _v_p, _v_reason, _flip = _model_action(
                                     spot_btc=float(btc_now),
                                     strike=float(strike),
                                     seconds_to_close=float(secs_to_close),
                                     sigma_annualized=float(_v_sigma),
                                     engine_side=side_to_buy,
                                     engine_price_cents=int(late_entry_ask),
-                                    threshold_cents=int(args.veto_threshold),
+                                    skip_threshold_cents=int(args.veto_threshold),
+                                    flip_threshold_cents=int(_flip_thr_l),
+                                    yes_ask_cents=int(yes_ask),
+                                    no_ask_cents=int(no_ask),
+                                    flip_slip_cents=int(args.veto_flip_slip),
                                 )
                                 log_fp.write(json.dumps({
                                     "kind": "model_veto",
                                     "ts_ms": now_ms, "ticker": ticker,
                                     "stage": "late",
                                     "mode": args.veto_mode,
-                                    "would_skip": _v_skip,
+                                    "action": _action,
                                     "p_model_yes": _v_p,
                                     "engine_side": side_to_buy,
                                     "engine_price_cents": int(late_entry_ask),
                                     "sigma_used": float(_v_sigma),
-                                    "threshold_cents": int(args.veto_threshold),
+                                    "veto_threshold_cents": int(args.veto_threshold),
+                                    "flip_threshold_cents": int(_flip_thr_l),
+                                    "flip_details": _flip,
                                     "reason": _v_reason,
                                 }, default=str) + "\n")
                                 log_fp.flush()
-                                if args.veto_mode == "skip" and _v_skip:
+                                if args.veto_mode in ("skip", "flip") and _action == "SKIP":
                                     log_fp.write(json.dumps({
                                         "kind": "late_skip",
                                         "ts_ms": now_ms, "ticker": ticker,
@@ -2543,8 +2759,93 @@ async def main_async() -> int:
                                     state["status"] = "late_skipped_veto"
                                     state["leg_taken"] = "LATE"
                                     print(
-                                        f"[live-unified] LATE VETO {ticker} "
+                                        f"[live-unified] LATE VETO-SKIP {ticker} "
                                         f"{side_to_buy}@{late_entry_ask}c "
+                                        f"p_model={_v_p:.3f}", flush=True,
+                                    )
+                                    continue
+                                if args.veto_mode == "flip" and _action == "FLIP":
+                                    _flip_side_l = _flip['side']
+                                    _flip_limit_l = int(_flip['limit_cents'])
+                                    log_fp.write(json.dumps({
+                                        "kind": "model_veto_flip_attempt",
+                                        "ts_ms": now_ms, "ticker": ticker,
+                                        "stage": "late",
+                                        "from_side": side_to_buy,
+                                        "to_side": _flip_side_l,
+                                        "from_price_cents": int(late_entry_ask),
+                                        "to_limit_cents": _flip_limit_l,
+                                        "opposite_ask_cents": _flip.get('opp_ask'),
+                                        "p_model_yes": _v_p,
+                                    }, default=str) + "\n")
+                                    log_fp.flush()
+                                    base_flip_l = {
+                                        "ts_ms": now_ms, "ticker": ticker,
+                                        "leg": "LATE_FLIP", "tier": "MODEL_FLIP",
+                                        "side": _flip_side_l,
+                                        "contracts": late_contracts,
+                                        "limit_cents": _flip_limit_l,
+                                        "engine_intended_side": side_to_buy,
+                                        "engine_intended_price_cents": int(late_entry_ask),
+                                        "p_model_yes": _v_p,
+                                        "veto_reason": _v_reason,
+                                        "close_ts_ms": close_ts_ms,
+                                        "secs_to_close": round(secs_to_close, 1),
+                                        "balance_cents": bal.balance,
+                                        "dry_run": args.dry_run,
+                                    }
+                                    f_fl_l, avg_fl_l, oid_fl_l = await place_ioc(
+                                        client, ticker, _flip_side_l,
+                                        late_contracts, _flip_limit_l,
+                                        log_fp, base_flip_l, args.dry_run,
+                                    )
+                                    if f_fl_l == 0:
+                                        log_fp.write(json.dumps({
+                                            "kind": "model_veto_flip_no_fill",
+                                            "ts_ms": int(time.time()*1000),
+                                            "ticker": ticker, "stage": "late",
+                                            "to_side": _flip_side_l,
+                                            "limit_cents": _flip_limit_l,
+                                            "order_id": oid_fl_l,
+                                        }, default=str) + "\n")
+                                        log_fp.flush()
+                                        state["status"] = "late_flip_no_fill"
+                                        state["leg_taken"] = "LATE"
+                                        print(
+                                            f"[live-unified] LATE FLIP NO-FILL "
+                                            f"{ticker} {_flip_side_l}@{_flip_limit_l}c",
+                                            flush=True,
+                                        )
+                                        continue
+                                    entry_fee_fl_l = kalshi_taker_fee_cents(avg_fl_l, f_fl_l)
+                                    state.update({
+                                        "status": "entered",
+                                        "leg_taken": "LATE_FLIP",
+                                        "side": _flip_side_l,
+                                        "contracts": f_fl_l,
+                                        "entry_price_cents": avg_fl_l,
+                                        "entry_fee_cents": entry_fee_fl_l,
+                                        "order_id": oid_fl_l,
+                                        "tier": "MODEL_FLIP",
+                                    })
+                                    log_fp.write(json.dumps({
+                                        "kind": "model_veto_flip_fill",
+                                        "ts_ms": int(time.time()*1000),
+                                        "ticker": ticker, "stage": "late",
+                                        "side": _flip_side_l,
+                                        "contracts": f_fl_l,
+                                        "entry_price_cents": avg_fl_l,
+                                        "entry_fee_cents": entry_fee_fl_l,
+                                        "p_model_yes": _v_p,
+                                        "engine_intended_side": side_to_buy,
+                                        "engine_intended_price_cents": int(late_entry_ask),
+                                        "order_id": oid_fl_l,
+                                    }, default=str) + "\n")
+                                    log_fp.flush()
+                                    print(
+                                        f"[live-unified] LATE FLIP-FILL "
+                                        f"{ticker} eng_wanted={side_to_buy}@{late_entry_ask}c "
+                                        f"-> we bet {_flip_side_l}@{avg_fl_l}c "
                                         f"p_model={_v_p:.3f}", flush=True,
                                     )
                                     continue

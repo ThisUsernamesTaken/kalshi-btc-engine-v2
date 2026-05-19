@@ -66,28 +66,36 @@ def main():
         if not t: return
         # Live-trader native event
         if k == 'model_veto':
+            # New schema has 'action' (KEEP/SKIP/FLIP); old has 'would_skip' bool
+            action = e.get('action')
+            if action is None:
+                action = 'SKIP' if e.get('would_skip', False) else 'KEEP'
             veto_events.append(dict(
                 ticker=t, ts_ms=ts,
-                would_skip=e.get('would_skip', False),
+                action=action,
+                would_skip=(action in ('SKIP', 'FLIP')),
                 p_model=e.get('p_model_yes'),
                 engine_side=e.get('engine_side'),
                 engine_price=e.get('engine_price_cents'),
                 stage=e.get('stage'),
                 mode=e.get('mode'),
+                flip_details=e.get('flip_details'),
                 reason=e.get('reason', '')[:140],
             ))
         # veto_shadow_monitor output (historical audit)
         elif k == 'veto_shadow_decision':
-            # Map trigger_kind to stage
             tk = e.get('trigger_kind', '').replace('_trigger', '')
+            ws = e.get('would_skip', False)
             veto_events.append(dict(
                 ticker=t, ts_ms=ts,
-                would_skip=e.get('would_skip', False),
+                action=('SKIP' if ws else 'KEEP'),  # shadow monitor has no FLIP yet
+                would_skip=ws,
                 p_model=e.get('p_model_yes'),
                 engine_side=e.get('engine_side'),
                 engine_price=e.get('engine_price_cents'),
                 stage=tk,
                 mode='shadow',
+                flip_details=None,
                 reason=e.get('reason', '')[:140],
             ))
         elif k in ('earlier_moderate_skip', 'late_skip', 't30_sniper_skip'):

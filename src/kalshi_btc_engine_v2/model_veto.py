@@ -129,4 +129,88 @@ def veto_decision(
     )
 
 
-__all__ = ['fair_p_yes', 'veto_decision']
+def model_action_decision(
+    *,
+    spot_btc: float,
+    strike: float,
+    seconds_to_close: float,
+    sigma_annualized: float,
+    engine_side: Side,
+    engine_price_cents: int,
+    skip_threshold_cents: int = 5,
+    flip_threshold_cents: int = 30,
+    yes_ask_cents: int | None = None,
+    no_ask_cents: int | None = None,
+    flip_slip_cents: int = 2,
+    drift_annualized: float = 0.0,
+) -> tuple[str, float, str, dict | None]:
+    """Three-way decision: KEEP the engine's trade, SKIP it, or FLIP to opposite side.
+
+    Returns
+    -------
+    (action, p_model, reason, flip_details)
+        action: 'KEEP' | 'SKIP' | 'FLIP'
+        p_model: model's predicted p_yes
+        reason: human-readable
+        flip_details: dict(side, limit_cents) if action='FLIP' and a valid
+                      opposite-side ask is available; else None
+
+    Decision rule:
+      Let diff_c = (p_model - engine_implied_p_yes) * 100 (in cents).
+      Disagreement = abs(diff_c) only counts when the SIGN of diff_c implies
+      betting the OPPOSITE side of what the engine wants:
+        engine='yes' -> disagreement only when diff_c < 0 (model wants less YES)
+        engine='no'  -> disagreement only when diff_c > 0 (model wants more YES)
+
+      If disagreement < skip_threshold: KEEP
+      If skip_threshold <= disagreement < flip_threshold: SKIP
+      If disagreement >= flip_threshold AND opposite-side ask available: FLIP
+      If disagreement >= flip_threshold AND no opposite-side ask: SKIP (defensive)
+
+    Backed by analysis/17 + 18: applied to 131 OOS live trades, veto+flip
+    (skip>=8c, flip>=30c) gives +$173 swing with 95% bootstrap CI [+$68,
+    +$296], 99.9% of resamples positive. Best mean among tested variants.
+    """
+    p_model = fair_p_yes(
+        spot_btc=spot_btc, strike=strike,
+        seconds_to_close=seconds_to_close,
+        sigma_annualized=sigma_annualized,
+        drift_annualized=drift_annualized,
+    )
+    if engine_side == 'yes':
+        engine_implied_p_yes = engine_price_cents / 100.0
+        diff_c = (p_model - engine_implied_p_yes) * 100.0
+        # disagreement only when model wants LESS YES (diff < 0)
+        disagree_c = -diff_c if diff_c < 0 else 0.0
+    else:
+        engine_implied_p_yes = 1.0 - engine_price_cents / 100.0
+        diff_c = (p_model - engine_implied_p_yes) * 100.0
+        disagree_c = diff_c if diff_c > 0 else 0.0
+
+    base_msg = (f'p_model={p_model:.3f} engine_implied={engine_implied_p_yes:.3f} '
+                f'diff={diff_c:+.1f}c disagree={disagree_c:.1f}c')
+
+    if disagree_c < skip_threshold_cents:
+        return 'KEEP', p_model, f'model_agrees {base_msg}', None
+
+    if disagree_c < flip_threshold_cents:
+        side_name = engine_side
+        return ('SKIP', p_model,
+                f'model_says_{side_name}_overpriced (mid-disagree) {base_msg}',
+                None)
+
+    # FLIP territory — need opposite-side ask
+    opposite_side: Side = 'no' if engine_side == 'yes' else 'yes'
+    opp_ask = no_ask_cents if engine_side == 'yes' else yes_ask_cents
+    if opp_ask is None or not (0 < opp_ask < 100):
+        return ('SKIP', p_model,
+                f'flip_blocked_no_opposite_ask {base_msg}',
+                None)
+    # Place limit at opposite_ask + slip, capped 1..99
+    flip_limit = max(1, min(99, opp_ask + flip_slip_cents))
+    return ('FLIP', p_model,
+            f'model_flips_to_{opposite_side}@{flip_limit}c {base_msg}',
+            dict(side=opposite_side, limit_cents=flip_limit, opp_ask=opp_ask))
+
+
+__all__ = ['fair_p_yes', 'veto_decision', 'model_action_decision']
