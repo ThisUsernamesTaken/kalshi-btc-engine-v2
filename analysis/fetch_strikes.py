@@ -102,12 +102,22 @@ def main():
                     help='only fetch tickers from this source log')
     ap.add_argument('--limit', type=int, default=None,
                     help='cap on number of new fetches (for testing)')
+    ap.add_argument('--from-sqlite', type=str, default=None,
+                    help='also include all KXBTC15M tickers from this SQLite database')
     args = ap.parse_args()
 
     cache = {} if args.refresh else load_cache()
     print(f'Cache loaded with {len(cache)} existing tickers')
 
     tickers = collect_tickers(args.source)
+    if args.from_sqlite:
+        import sqlite3
+        con = sqlite3.connect(f'file:{args.from_sqlite}?mode=ro', uri=True)
+        cur = con.cursor()
+        cur.execute("select ticker from market_dim where ticker like 'KXBTC15M-%'")
+        for (t,) in cur.fetchall():
+            tickers.setdefault(t, 'sqlite_market_dim')
+        con.close()
     print(f'Unique tickers across logs: {len(tickers)}')
 
     to_fetch = [t for t in tickers if t not in cache]
