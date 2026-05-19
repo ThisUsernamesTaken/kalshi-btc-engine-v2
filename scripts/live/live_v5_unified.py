@@ -98,6 +98,26 @@ except Exception as _veto_import_err:  # noqa: BLE001
 else:
     _veto_import_error = None
 
+
+# Convert BTCPriceBuffer.realized_vol_5m output to annualized sigma the
+# fair-value model expects.
+# realized_vol_5m returns: sigma_per_sec_log * sqrt(60) * 100  (i.e. % per sqrt(min))
+# sigma_annualized = sigma_per_sec_log * sqrt(365*24*3600)
+#                  = em_rv5 / (sqrt(60) * 100) * sqrt(31_536_000)
+#                  = em_rv5 * 7.2498
+_RV5M_TO_SIGMA_ANN = math.sqrt(365 * 24 * 3600) / (math.sqrt(60) * 100)
+
+
+def _rv5m_to_sigma_ann(rv5m: float | None) -> float:
+    """Convert the engine's rv_5m metric to sigma_annualized for the
+    fair-value model. Returns 0.5 (≈50% annualized) as a sane default
+    when rv5m is unavailable."""
+    if rv5m is None or rv5m <= 0:
+        return 0.5
+    sig = rv5m * _RV5M_TO_SIGMA_ANN
+    # Clip to sensible bounds (10% to 300% annualized)
+    return max(0.10, min(3.0, sig))
+
 # ── Strategy params (mirror backtest) ─────────────────────────────────────
 
 # LATE leg
@@ -1347,7 +1367,7 @@ async def main_async() -> int:
                                         # === MODEL VETO LAYER (EARLIER_MODERATE) ===
                                         if args.veto_mode != "off":
                                             try:
-                                                _v_sigma = em_rv5 if em_rv5 is not None else 0.5
+                                                _v_sigma = _rv5m_to_sigma_ann(em_rv5)
                                                 _v_skip, _v_p, _v_reason = _veto_decision(
                                                     spot_btc=float(btc_now_em),
                                                     strike=float(strike_em),
@@ -1629,7 +1649,9 @@ async def main_async() -> int:
                                 if (args.veto_mode != "off" and btc_now_t30
                                         and strike_t30 > 0):
                                     try:
-                                        _v_sigma_t30 = 0.5  # no rv_5m at t30 site
+                                        # Compute live RV from the BTC buffer at t30 site
+                                        _t30_rv5 = btc_buf.realized_vol_5m(now_ms)
+                                        _v_sigma_t30 = _rv5m_to_sigma_ann(_t30_rv5)
                                         _v_skip_t30, _v_p_t30, _v_reason_t30 = _veto_decision(
                                             spot_btc=float(btc_now_t30),
                                             strike=float(strike_t30),
@@ -2452,7 +2474,7 @@ async def main_async() -> int:
                         # === MODEL VETO LAYER (LATE) ===
                         if args.veto_mode != "off" and btc_now and strike > 0:
                             try:
-                                _v_sigma = late_rv5 if late_rv5 is not None else 0.5
+                                _v_sigma = _rv5m_to_sigma_ann(late_rv5)
                                 _v_skip, _v_p, _v_reason = _veto_decision(
                                     spot_btc=float(btc_now),
                                     strike=float(strike),

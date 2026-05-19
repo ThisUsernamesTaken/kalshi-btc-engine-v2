@@ -58,10 +58,16 @@ def _trigger_to_veto_args(event: dict) -> dict | None:
         price = (event.get('entry_ask_cents')
                  or event.get('fav_ask_cents')
                  or event.get('limit_cents'))
-    # Volatility: use rv_5m if available else 0.5 default
-    sigma = event.get('rv_5m')
-    if sigma is None:
+    # Volatility: use rv_5m from trigger if available, else 0.5 default
+    # NOTE: the engine's rv_5m is sigma_per_sec_log * sqrt(60) * 100, NOT
+    # annualized. We must apply the same conversion the live trader does.
+    import math as _math
+    rv5m = event.get('rv_5m')
+    if rv5m is None or rv5m <= 0:
         sigma = 0.5
+    else:
+        _factor = _math.sqrt(365 * 24 * 3600) / (_math.sqrt(60) * 100)  # = 7.25
+        sigma = max(0.10, min(3.0, rv5m * _factor))
     if not all([spot, strike, secs_to_close, side, price is not None]):
         return None
     return dict(
