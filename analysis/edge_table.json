@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "table_version": 1,
+  "generated_at_utc": "2026-05-19T05:54:56.069775+00:00",
+  "slip_cents": 2,
+  "min_bucket_n": 3,
+  "input_fingerprint": {
+    "v5_unified": {
+      "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\live_v5_unified_trades.jsonl",
+      "size_bytes": 1397155,
+      "mtime_iso": "2026-05-19T05:54:30.331047+00:00",
+      "head_tail_sha256": "9a293af78e2efcc4"
+    },
+    "v5_old": {
+      "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\live_v5_trades.jsonl",
+      "size_bytes": 946550,
+      "mtime_iso": "2026-05-15T14:29:28.671731+00:00",
+      "head_tail_sha256": "fe676c6ef9b45738"
+    },
+    "live_ta": {
+      "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\live_ta_trades.jsonl",
+      "size_bytes": 541992,
+      "mtime_iso": "2026-05-16T08:33:00.971965+00:00",
+      "head_tail_sha256": "ef707dd80ee36596"
+    },
+    "live_ta_v2": {
+      "path": "C:\\Trading\\kalshi-btc-engine-v2\\data\\live_ta_v2_trades.jsonl",
+      "size_bytes": 95527,
+      "mtime_iso": "2026-05-14T18:11:02.667469+00:00",
+      "head_tail_sha256": "1d1cbad7fbae089f"
+    }
+  },
+  "totals": {
+    "n_settles": 134,
+    "n_buckets": 12,
+    "n_keep_buckets": 5,
+    "n_invert_buckets": 7,
+    "trades_covered": 80
+  },
+  "bucketing_spec": {
+    "sv60_thresholds": {
+      "rev_max": -30,
+      "flat_max": 30,
+      "mom_lo_max": 80
+    },
+    "entry_thresholds": {
+      "lottery_max": 15,
+      "underdog_max": 70,
+      "mid_max": 84,
+      "cursed_max": 91
+    },
+    "pine_bar_thresholds": {
+      "early_max": 4,
+      "sweet_max": 6
+    }
+  },
+  "sizing_recommendation": {
+    "scheme": "dollar-at-risk discrete tiers + bucket streak halt",
+    "slip_cents": 2,
+    "risk_tiers_c": [
+      {
+        "min_edge_per_ct_c": 30,
+        "dollars_at_risk": 12.0
+      },
+      {
+        "min_edge_per_ct_c": 20,
+        "dollars_at_risk": 6.0
+      },
+      {
+        "min_edge_per_ct_c": 10,
+        "dollars_at_risk": 3.0
+      },
+      {
+        "min_edge_per_ct_c": 5,
+        "dollars_at_risk": 1.2
+      }
+    ],
+    "max_size_contracts": 100,
+    "min_edge_per_ct_c": 5,
+    "streak_halt_losses": 2,
+    "streak_cooldown_trades": 10,
+    "notes": "Risk-tier dollars scaled to a small starting bankroll. Scale linearly with bankroll. The streak halt is the load-bearing piece of drawdown control \u2014 without it, big tiers blow up during the 2026-05-16 EM-cursed-stripe loss cluster."
+  },
+  "buckets": [
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "early",
+        "entry_bucket": "mid",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 11,
+      "WR_engine": 0.6364,
+      "WR_effective": 0.3636,
+      "avg_entry_c": 78.55,
+      "edge_per_ct_c": 12.909,
+      "kelly_fraction": 0.1686,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "v5",
+        "leg_or_bar": "EM",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "flat"
+      },
+      "n": 13,
+      "WR_engine": 0.7692,
+      "WR_effective": 0.2308,
+      "avg_entry_c": 88.69,
+      "edge_per_ct_c": 9.769,
+      "kelly_fraction": 0.1127,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "sweet",
+        "entry_bucket": "mid",
+        "sv60_bucket": "mom_lo"
+      },
+      "n": 3,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 79.67,
+      "edge_per_ct_c": 18.333,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "v5",
+        "leg_or_bar": "PINE",
+        "entry_bucket": "cursed",
+        "sv60_bucket": "NA"
+      },
+      "n": 3,
+      "WR_engine": 0.6667,
+      "WR_effective": 0.3333,
+      "avg_entry_c": 86.0,
+      "edge_per_ct_c": 17.333,
+      "kelly_fraction": 0.2063,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "v5",
+        "leg_or_bar": "PINE",
+        "entry_bucket": "high",
+        "sv60_bucket": "NA"
+      },
+      "n": 10,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 93.3,
+      "edge_per_ct_c": 4.7,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "late",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "flat"
+      },
+      "n": 9,
+      "WR_engine": 0.4444,
+      "WR_effective": 0.5556,
+      "avg_entry_c": 50.67,
+      "edge_per_ct_c": 4.222,
+      "kelly_fraction": 0.0868,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "pine",
+        "leg_or_bar": "late",
+        "entry_bucket": "mid",
+        "sv60_bucket": "flat"
+      },
+      "n": 3,
+      "WR_engine": 0.6667,
+      "WR_effective": 0.3333,
+      "avg_entry_c": 77.67,
+      "edge_per_ct_c": 9.0,
+      "kelly_fraction": 0.1189,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "v5",
+        "leg_or_bar": "EM",
+        "entry_bucket": "high",
+        "sv60_bucket": "flat"
+      },
+      "n": 7,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 94.43,
+      "edge_per_ct_c": 3.571,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "v5",
+        "leg_or_bar": "LATE",
+        "entry_bucket": "mid",
+        "sv60_bucket": "flat"
+      },
+      "n": 4,
+      "WR_engine": 0.75,
+      "WR_effective": 0.25,
+      "avg_entry_c": 82.0,
+      "edge_per_ct_c": 5.0,
+      "kelly_fraction": 0.0625,
+      "action": "INVERT"
+    },
+    {
+      "key": {
+        "engine_family": "v5",
+        "leg_or_bar": "LATE",
+        "entry_bucket": "high",
+        "sv60_bucket": "flat"
+      },
+      "n": 8,
+      "WR_engine": 1.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 95.88,
+      "edge_per_ct_c": 2.125,
+      "kelly_fraction": 1.0,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "v5",
+        "leg_or_bar": "LATE",
+        "entry_bucket": "underdog",
+        "sv60_bucket": "flat"
+      },
+      "n": 3,
+      "WR_engine": 0.6667,
+      "WR_effective": 0.6667,
+      "avg_entry_c": 62.33,
+      "edge_per_ct_c": 2.333,
+      "kelly_fraction": 0.0654,
+      "action": "KEEP"
+    },
+    {
+      "key": {
+        "engine_family": "v5",
+        "leg_or_bar": "LATE",
+        "entry_bucket": "lottery",
+        "sv60_bucket": "flat"
+      },
+      "n": 6,
+      "WR_engine": 0.0,
+      "WR_effective": 1.0,
+      "avg_entry_c": 2.17,
+      "edge_per_ct_c": 0.167,
+      "kelly_fraction": 1.0,
+      "action": "INVERT"
+    }
+  ]
+}
