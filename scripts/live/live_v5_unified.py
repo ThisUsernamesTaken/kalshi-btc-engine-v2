@@ -1588,6 +1588,15 @@ async def main_async() -> int:
                                     log_fp.flush()
                                     state["t30_sniper_state"] = "done"
                                     continue
+                                # Extract spot + strike for veto + observability.
+                                _t30_latest = btc_buf.latest()
+                                btc_now_t30 = _t30_latest[1] if _t30_latest else None
+                                strike_t30 = float(state.get("strike", 0.0) or 0.0)
+                                if strike_t30 <= 0.0:
+                                    _s = await fetch_floor_strike(client, ticker)
+                                    if _s and _s > 0:
+                                        strike_t30 = _s
+                                        state["strike"] = _s
                                 trig_t30 = {
                                     "kind": "t30_sniper_trigger",
                                     "ts_ms": now_ms, "ticker": ticker,
@@ -1602,11 +1611,71 @@ async def main_async() -> int:
                                     "slippage_cents": slip_t30,
                                     "contracts": T30_SNIPER_CONTRACTS,
                                     "secs_to_close": round(secs_to_close, 1),
+                                    "btc_now": btc_now_t30,
+                                    "strike": strike_t30 if strike_t30 > 0 else None,
                                     "balance_cents": bal.balance,
                                     "book_source": book_source,
                                 }
                                 log_fp.write(json.dumps(trig_t30, default=str) + "\n")
                                 log_fp.flush()
+
+                                # === MODEL VETO LAYER (T-30 SNIPER) ===
+                                # Sniper is hold-to-settle at high-confidence; the model
+                                # tends to AGREE with sniper entries (the engine waits for
+                                # decisive book convergence, which the model also reads
+                                # as high-prob). Veto rarely fires here but acts as a
+                                # safety net if e.g. BRTI averaging math implies a flip
+                                # the engine missed.
+                                if (args.veto_mode != "off" and btc_now_t30
+                                        and strike_t30 > 0):
+                                    try:
+                                        _v_sigma_t30 = 0.5  # no rv_5m at t30 site
+                                        _v_skip_t30, _v_p_t30, _v_reason_t30 = _veto_decision(
+                                            spot_btc=float(btc_now_t30),
+                                            strike=float(strike_t30),
+                                            seconds_to_close=float(secs_to_close),
+                                            sigma_annualized=float(_v_sigma_t30),
+                                            engine_side=fav_side_t30,
+                                            engine_price_cents=int(fav_ask_t30),
+                                            threshold_cents=int(args.veto_threshold),
+                                        )
+                                        log_fp.write(json.dumps({
+                                            "kind": "model_veto",
+                                            "ts_ms": now_ms, "ticker": ticker,
+                                            "stage": "t30_sniper",
+                                            "mode": args.veto_mode,
+                                            "would_skip": _v_skip_t30,
+                                            "p_model_yes": _v_p_t30,
+                                            "engine_side": fav_side_t30,
+                                            "engine_price_cents": int(fav_ask_t30),
+                                            "sigma_used": float(_v_sigma_t30),
+                                            "threshold_cents": int(args.veto_threshold),
+                                            "reason": _v_reason_t30,
+                                        }, default=str) + "\n")
+                                        log_fp.flush()
+                                        if args.veto_mode == "skip" and _v_skip_t30:
+                                            log_fp.write(json.dumps({
+                                                "kind": "t30_sniper_skip",
+                                                "ts_ms": now_ms, "ticker": ticker,
+                                                "reason_code": "MODEL_VETO",
+                                                "detail": _v_reason_t30,
+                                            }, default=str) + "\n")
+                                            log_fp.flush()
+                                            state["t30_sniper_state"] = "done"
+                                            print(
+                                                f"[live-unified] T30 SNIPER VETO {ticker} "
+                                                f"{fav_side_t30}@{fav_ask_t30}c "
+                                                f"p_model={_v_p_t30:.3f}", flush=True,
+                                            )
+                                            continue
+                                    except Exception as _v_e:  # noqa: BLE001
+                                        log_fp.write(json.dumps({
+                                            "kind": "model_veto_error",
+                                            "ts_ms": now_ms, "ticker": ticker,
+                                            "stage": "t30_sniper",
+                                            "error": repr(_v_e)[:200],
+                                        }, default=str) + "\n")
+                                        log_fp.flush()
                                 base_t30 = {
                                     "ts_ms": now_ms, "ticker": ticker,
                                     "leg": "T30_SNIPER",

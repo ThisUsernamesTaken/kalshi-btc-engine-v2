@@ -12,7 +12,8 @@ Kalshi REST settlement cache (`strikes_cache.json`).
 | Bucket-conditional edge + dollar sizing + streak halt | +$2,293 / 245 tr | **−$858 / 215 tr** | **DEAD** — overfit |
 | Pine bar 5-6 + entry 92c+ filter | +$40 / 42 tr (chrono) | n/a | weak signal at small N |
 | Fair-value model (raw, taker, 10c, 1 day) | +$8.29 / 15 tr | n/a | early signal, 1 day |
-| Fair-value model (raw, MAKER rest, 5c, 5 days) | n/a | +$129.50 / 275 tr | promising, CI straddles 0 |
+| Fair-value model (raw, MAKER rest, 5c, 5 days) — proxy fills | n/a | +$129.50 / 275 tr | proxy backtest; CI straddles 0 |
+| Fair-value model (raw, MAKER rest, 5c, 4 days) — **L2-realistic fills** | n/a | **−$0.98 / 305 tr (WR 27%)** | **realistic fill model: breakeven** |
 | Fair-value model as VETO layer on live engines | n/a | +$91.62 swing / 131 tr / 5 days OOS | **CONSERVATIVE DEPLOY** — CI [+$35, +$156], 99.9% bootstrap positive |
 | **Fair-value model VETO + FLIP hybrid** (skip≥8c, flip≥30c) | n/a | **+$173 swing / 131 tr / 5 days OOS** | **HIGH-EV** — CI [+$68, +$296], 99.9% bootstrap positive, needs opposite-side execution |
 
@@ -149,6 +150,24 @@ robust at this N. Need more data (multi-week capture) to tighten CIs.
 **Every day positive except the 4-trade tail.** The negative-WR day (05-16)
 still produced +$68 — winners were large enough to offset frequent small
 losses. That's consistent with a mean-reverting strategy.
+
+### Reality check (added after SQLite L2 replay completed)
+
+The 07 standalone-maker backtest was **optimistic on fill prices**. It
+assumed `eff_entry = entry_c - 2` as a maker-equivalent proxy, but the
+**realistic L2 simulation** (`analysis/10_sqlite_replay_backtest.py`,
+305 trades, full 4-day burnin SQLite tape with actual orderbook history)
+shows the standalone maker-rest strategy ends up at **−$0.98 / 27% WR**
+— essentially breakeven.
+
+**Implication**: the +$92 / +$173 swings from the VETO layer remain
+valid because the veto operates on trades the engine already placed
+at taker fees. It doesn't require maker execution and doesn't depend
+on the optimistic fill proxy.
+
+**Do not deploy** the standalone maker-rest strategy on real money
+without further fill-rate validation. **Do consider deploying** the
+veto layer in shadow mode (the production-grade signal we have).
 
 ## Operational requirement
 

@@ -71,8 +71,9 @@ def main():
         select ticker, close_time
           from market_dim
          where ticker like 'KXBTC15M-%'
+           and close_time > '2026-05-15'
          order by close_time
-         limit 30
+         limit 15
     """)
     markets = cur.fetchall()
     print(f'Testing fill rates on {len(markets)} markets')

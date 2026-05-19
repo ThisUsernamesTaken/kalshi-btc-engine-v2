@@ -164,28 +164,76 @@ def simulate_maker_fill(bbo, decision_ts, side, limit_c, timeout_s=60):
     return None, None
 
 
+def batch_get_spot_window(con, start_ts, end_ts):
+    """Pull all spot quotes for a window in one query. Returns sorted list (ts, mid_dict_by_venue)."""
+    cur = con.cursor()
+    cur.execute("""
+        select COALESCE(exchange_ts_ms, received_ts_ms) as ts, venue, mid
+          from spot_quote_event
+         where symbol = 'btcusd'
+           and venue in ('coinbase','kraken','bitstamp')
+           and COALESCE(exchange_ts_ms, received_ts_ms) between ? and ?
+         order by ts
+    """, (start_ts, end_ts))
+    rows = cur.fetchall()
+    return [(ts, v, float(m)) for ts, v, m in rows if m is not None]
+
+
+def _spot_at_from_batch(batch, target_ts):
+    """Find median spot across venues within 5s of target_ts."""
+    idx = bisect.bisect_right([r[0] for r in batch], target_ts) - 1
+    if idx < 0: return None
+    by_v = {}
+    for j in range(idx, max(-1, idx - 30), -1):
+        ts, v, m = batch[j]
+        if target_ts - ts > 5000: break
+        by_v.setdefault(v, m)
+    if not by_v: return None
+    vals = sorted(by_v.values())
+    return vals[len(vals)//2]
+
+
+def _rv_from_batch(batch, end_ts, window_s=300):
+    """Compute RV from Coinbase points in [end_ts - window, end_ts]."""
+    start_ts = end_ts - window_s * 1000
+    cb_prices = [(ts, m) for ts, v, m in batch if v == 'coinbase' and start_ts <= ts <= end_ts]
+    if len(cb_prices) < 3: return 0.5
+    prices = [m for _, m in cb_prices if m > 0]
+    if len(prices) < 3: return 0.5
+    log_rets = [math.log(prices[i+1]/prices[i]) for i in range(len(prices)-1)]
+    if not log_rets: return 0.5
+    m = sum(log_rets)/len(log_rets)
+    v = sum((r-m)**2 for r in log_rets) / max(1, len(log_rets)-1)
+    sigma_per_sample = math.sqrt(v)
+    dt_ms = (cb_prices[-1][0] - cb_prices[0][0]) / max(1, len(cb_prices)-1)
+    sigma_per_sec = sigma_per_sample / math.sqrt(max(dt_ms/1000, 0.1))
+    sigma_ann = sigma_per_sec * math.sqrt(365 * 24 * 3600)
+    return max(0.10, min(3.0, sigma_ann))
+
+
 def backtest_one_market(con, mkt, decision_offsets_s=(540, 480, 420, 360, 300, 240, 180, 120, 60),
                         threshold_c=5, contracts=10):
     """For one market, evaluate model at several time-to-close points; trade at most once.
        Returns list of trade dicts."""
     close_ts = mkt['close_ts_ms']
-    open_ts  = close_ts - 16 * 60 * 1000   # ~16 min before close (market open + buffer)
+    open_ts  = close_ts - 16 * 60 * 1000
     bbo = extract_bbo_for_market(con, mkt['ticker'], open_ts, close_ts + 5000)
     if not bbo: return []
+    # Single spot batch for the whole window plus 5min lookback for RV
+    spot_batch = batch_get_spot_window(con, open_ts - 300_000, close_ts + 5000)
     trades = []
     taken = False
     for offset_s in decision_offsets_s:
         if taken: break
         decision_ts = close_ts - offset_s * 1000
-        # Find BBO at decision time
         idx = bisect.bisect_left([b[0] for b in bbo], decision_ts)
         if idx >= len(bbo): continue
         ts, yb, ya, nb, na = bbo[idx]
         if not all([yb, ya, nb, na]): continue
         if yb >= ya: continue
-        spot = get_spot_at(con, decision_ts)
+        spot = _spot_at_from_batch(spot_batch, decision_ts)
         if not spot: continue
-        sigma = compute_rv_ann_around(con, decision_ts)
+        sigma = _rv_from_batch(spot_batch, decision_ts)
         tau = (close_ts - decision_ts) / 1000.0
         try:
             pm = settlement_fair_probability(
