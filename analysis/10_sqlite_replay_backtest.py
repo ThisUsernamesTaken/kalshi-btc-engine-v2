@@ -68,56 +68,35 @@ def get_all_settled_markets():
 
 
 def extract_bbo_for_market(con, ticker, start_ts, end_ts, downsample_ms=1000):
-    """Build per-second BBO time series for one market from kalshi_l2_event.
-
-    Maintains a running L2 book of (yes_side, price -> size) and emits a tuple
-    at each downsample boundary.
-    """
+    """Read pre-computed best_yes_bid / best_yes_ask from L2 events.
+    Downsample to ~1 row per `downsample_ms` to keep memory bounded."""
     cur = con.cursor()
     cur.execute("""
-        select received_ts_ms, event_type, side, price, size, delta
+        select COALESCE(exchange_ts_ms, received_ts_ms) as ts,
+               best_yes_bid, best_yes_ask
           from kalshi_l2_event
          where market_ticker = ?
-           and received_ts_ms between ? and ?
-         order by received_ts_ms
+           and COALESCE(exchange_ts_ms, received_ts_ms) between ? and ?
+           and best_yes_bid is not null
+           and best_yes_ask is not null
+         order by ts
     """, (ticker, start_ts, end_ts))
-    # Simple book: dict[side][price_c] = size
-    book = {'yes': {}, 'no': {}}
-    last_emit = 0
     bbo = []
-    for ts, et, side, price, size, delta in cur:
-        if side not in book: continue
-        price_c = int(round(float(price) * 100))
-        # Apply update: snapshot replaces, delta increments
-        if et == 'orderbook_snapshot':
-            # 'snapshot' events here are level rows, not full snapshots — same as delta
-            pass
+    last_emit = 0
+    for ts, yb_s, ya_s in cur:
+        if ts - last_emit < downsample_ms:
+            continue
         try:
-            delta_v = float(delta) if delta is not None else 0
+            yb_c = int(round(float(yb_s) * 100))
+            ya_c = int(round(float(ya_s) * 100))
         except (TypeError, ValueError):
-            delta_v = 0
-        try:
-            size_v = float(size) if size is not None else 0
-        except (TypeError, ValueError):
-            size_v = 0
-        if delta_v != 0:
-            new_size = book[side].get(price_c, 0) + delta_v
-        else:
-            new_size = size_v
-        if new_size <= 0:
-            book[side].pop(price_c, None)
-        else:
-            book[side][price_c] = new_size
-        # Emit if past sample boundary
-        if ts - last_emit >= downsample_ms:
-            yb = max(book['yes']) if book['yes'] else None
-            nb = max(book['no']) if book['no'] else None
-            # YES ask = 100 - NO bid (best NO bid implies cheapest seller of YES at 100-NO_bid)
-            ya = (100 - nb) if nb is not None else None
-            na = (100 - yb) if yb is not None else None
-            if yb and ya and yb <= ya:
-                bbo.append((ts, yb, ya, nb, na))
-                last_emit = ts
+            continue
+        if yb_c >= ya_c or yb_c < 0 or ya_c > 100:
+            continue
+        nb_c = 100 - ya_c
+        na_c = 100 - yb_c
+        bbo.append((ts, yb_c, ya_c, nb_c, na_c))
+        last_emit = ts
     return bbo
 
 
@@ -126,10 +105,10 @@ def get_spot_at(con, target_ts):
     cur = con.cursor()
     cur.execute("""
         select venue, mid from spot_quote_event
-         where received_ts_ms between ? and ?
-           and symbol = 'btcusd'
+         where symbol = 'btcusd'
            and venue in ('coinbase','kraken','bitstamp')
-         order by received_ts_ms desc
+           and COALESCE(exchange_ts_ms, received_ts_ms) between ? and ?
+         order by COALESCE(exchange_ts_ms, received_ts_ms) desc
          limit 12
     """, (target_ts - 5000, target_ts))
     rows = cur.fetchall()
@@ -148,11 +127,12 @@ def compute_rv_ann_around(con, target_ts, window_s=300):
     """Realized vol from spot history."""
     cur = con.cursor()
     cur.execute("""
-        select received_ts_ms, mid from spot_quote_event
-         where received_ts_ms between ? and ?
-           and symbol = 'btcusd'
+        select COALESCE(exchange_ts_ms, received_ts_ms) as ts, mid
+          from spot_quote_event
+         where symbol = 'btcusd'
            and venue = 'coinbase'
-         order by received_ts_ms
+           and COALESCE(exchange_ts_ms, received_ts_ms) between ? and ?
+         order by ts
     """, (target_ts - window_s * 1000, target_ts))
     rows = cur.fetchall()
     if len(rows) < 3: return 0.5
@@ -259,12 +239,15 @@ def main():
     threshold = int(sys.argv[2]) if len(sys.argv) > 2 else 5
     con = sqlite3.connect(f'file:{DB}?mode=ro', uri=True)
     all_trades = []
+    import time
+    t_start = time.time()
     for i, mkt in enumerate(markets[:limit]):
+        t0 = time.time()
         ts = backtest_one_market(con, mkt, threshold_c=threshold)
+        elapsed = time.time() - t0
         all_trades.extend(ts)
-        if (i+1) % 25 == 0:
-            n_w = sum(1 for t in all_trades if t['won'])
-            print(f'  [{i+1}/{limit}] trades={len(all_trades)} WR={n_w/max(len(all_trades),1)*100:.1f}% net=${sum(t["net"] for t in all_trades)/100:+.2f}')
+        print(f'  [{i+1}/{limit}] {mkt["ticker"][-15:]} {elapsed:.1f}s  '
+              f'trades_now={len(all_trades)}', flush=True)
     con.close()
     if not all_trades:
         print('No trades fired')
