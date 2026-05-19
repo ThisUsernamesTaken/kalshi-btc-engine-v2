@@ -83,6 +83,21 @@ from kalshi_client import (  # noqa: E402
 )
 from kalshi_ws import KalshiWebSocket  # noqa: E402
 
+# Fair-value-model veto layer (analysis/13, 14 -> +$91 swing, CI [+$26, +$172]).
+# Imported defensively: failure to import never blocks the live trader.
+try:
+    _V2_SRC = Path(__file__).resolve().parent.parent.parent / "src"
+    if str(_V2_SRC) not in sys.path:
+        sys.path.insert(0, str(_V2_SRC))
+    from kalshi_btc_engine_v2.model_veto import veto_decision as _veto_decision  # noqa: E402
+    _VETO_AVAILABLE = True
+except Exception as _veto_import_err:  # noqa: BLE001
+    _VETO_AVAILABLE = False
+    _veto_decision = None  # type: ignore[assignment]
+    _veto_import_error = repr(_veto_import_err)
+else:
+    _veto_import_error = None
+
 # ── Strategy params (mirror backtest) ─────────────────────────────────────
 
 # LATE leg
@@ -578,7 +593,26 @@ async def main_async() -> int:
                         help="Disable the LATE leg (leader_at_min12 at T-180s). "
                         "Backtest: structurally -EV in test set. Recommended "
                         "to combine with --enable-t30-sniper which replaces it.")
+    parser.add_argument("--veto-mode", choices=("off", "shadow", "skip"),
+                        default="off",
+                        help="Fair-value-model veto layer. 'off' = no veto "
+                        "(default). 'shadow' = compute and log model_veto "
+                        "events but never skip. 'skip' = actually skip "
+                        "trades the model disagrees with. Backed by "
+                        "analysis/13_model_vs_engine.py + 14_veto_robustness "
+                        "(OOS swing +$92, 95%% CI [+$26, +$172], 99.9%% "
+                        "bootstrap-positive across 131 OOS trades).")
+    parser.add_argument("--veto-threshold", type=int, default=5,
+                        help="Disagreement threshold in cents for the veto "
+                        "to fire (default 5). Sensitivity tested in "
+                        "analysis/14: all thresholds 2-20c produce "
+                        "positive OOS swing.")
     args = parser.parse_args()
+    if args.veto_mode != "off" and not _VETO_AVAILABLE:
+        print(f"[live-unified] WARNING: --veto-mode={args.veto_mode} but "
+              f"model_veto import failed: {_veto_import_error}. "
+              "Falling back to veto-mode=off.", flush=True)
+        args.veto_mode = "off"
 
     args.decision_log.parent.mkdir(parents=True, exist_ok=True)
     log_fp = args.decision_log.open("a", encoding="utf-8")
@@ -1309,6 +1343,58 @@ async def main_async() -> int:
                                             json.dumps(trig_em, default=str) + "\n"
                                         )
                                         log_fp.flush()
+
+                                        # === MODEL VETO LAYER (EARLIER_MODERATE) ===
+                                        if args.veto_mode != "off":
+                                            try:
+                                                _v_sigma = em_rv5 if em_rv5 is not None else 0.5
+                                                _v_skip, _v_p, _v_reason = _veto_decision(
+                                                    spot_btc=float(btc_now_em),
+                                                    strike=float(strike_em),
+                                                    seconds_to_close=float(secs_to_close),
+                                                    sigma_annualized=float(_v_sigma),
+                                                    engine_side=em_side,
+                                                    engine_price_cents=int(em_entry_ask),
+                                                    threshold_cents=int(args.veto_threshold),
+                                                )
+                                                log_fp.write(json.dumps({
+                                                    "kind": "model_veto",
+                                                    "ts_ms": now_ms, "ticker": ticker,
+                                                    "stage": "earlier_moderate",
+                                                    "mode": args.veto_mode,
+                                                    "would_skip": _v_skip,
+                                                    "p_model_yes": _v_p,
+                                                    "engine_side": em_side,
+                                                    "engine_price_cents": int(em_entry_ask),
+                                                    "sigma_used": float(_v_sigma),
+                                                    "threshold_cents": int(args.veto_threshold),
+                                                    "reason": _v_reason,
+                                                }, default=str) + "\n")
+                                                log_fp.flush()
+                                                if args.veto_mode == "skip" and _v_skip:
+                                                    log_fp.write(json.dumps({
+                                                        "kind": "earlier_moderate_skip",
+                                                        "ts_ms": now_ms, "ticker": ticker,
+                                                        "reason_code": "MODEL_VETO",
+                                                        "detail": _v_reason,
+                                                    }, default=str) + "\n")
+                                                    log_fp.flush()
+                                                    state["earlier_moderate_state"] = "done"
+                                                    print(
+                                                        f"[live-unified] EARLIER-MOD VETO "
+                                                        f"{ticker} {em_side}@{em_entry_ask}c "
+                                                        f"p_model={_v_p:.3f}", flush=True,
+                                                    )
+                                                    continue
+                                            except Exception as _v_e:  # noqa: BLE001
+                                                # Veto MUST NOT block trading on its own bugs.
+                                                log_fp.write(json.dumps({
+                                                    "kind": "model_veto_error",
+                                                    "ts_ms": now_ms, "ticker": ticker,
+                                                    "stage": "earlier_moderate",
+                                                    "error": repr(_v_e)[:200],
+                                                }, default=str) + "\n")
+                                                log_fp.flush()
 
                                         base_em = {
                                             "ts_ms": now_ms, "ticker": ticker,
@@ -2293,6 +2379,58 @@ async def main_async() -> int:
                         }
                         log_fp.write(json.dumps(trig_rec, default=str) + "\n")
                         log_fp.flush()
+
+                        # === MODEL VETO LAYER (LATE) ===
+                        if args.veto_mode != "off" and btc_now and strike > 0:
+                            try:
+                                _v_sigma = late_rv5 if late_rv5 is not None else 0.5
+                                _v_skip, _v_p, _v_reason = _veto_decision(
+                                    spot_btc=float(btc_now),
+                                    strike=float(strike),
+                                    seconds_to_close=float(secs_to_close),
+                                    sigma_annualized=float(_v_sigma),
+                                    engine_side=side_to_buy,
+                                    engine_price_cents=int(late_entry_ask),
+                                    threshold_cents=int(args.veto_threshold),
+                                )
+                                log_fp.write(json.dumps({
+                                    "kind": "model_veto",
+                                    "ts_ms": now_ms, "ticker": ticker,
+                                    "stage": "late",
+                                    "mode": args.veto_mode,
+                                    "would_skip": _v_skip,
+                                    "p_model_yes": _v_p,
+                                    "engine_side": side_to_buy,
+                                    "engine_price_cents": int(late_entry_ask),
+                                    "sigma_used": float(_v_sigma),
+                                    "threshold_cents": int(args.veto_threshold),
+                                    "reason": _v_reason,
+                                }, default=str) + "\n")
+                                log_fp.flush()
+                                if args.veto_mode == "skip" and _v_skip:
+                                    log_fp.write(json.dumps({
+                                        "kind": "late_skip",
+                                        "ts_ms": now_ms, "ticker": ticker,
+                                        "reason_code": "MODEL_VETO",
+                                        "detail": _v_reason,
+                                    }, default=str) + "\n")
+                                    log_fp.flush()
+                                    state["status"] = "late_skipped_veto"
+                                    state["leg_taken"] = "LATE"
+                                    print(
+                                        f"[live-unified] LATE VETO {ticker} "
+                                        f"{side_to_buy}@{late_entry_ask}c "
+                                        f"p_model={_v_p:.3f}", flush=True,
+                                    )
+                                    continue
+                            except Exception as _v_e:  # noqa: BLE001
+                                log_fp.write(json.dumps({
+                                    "kind": "model_veto_error",
+                                    "ts_ms": now_ms, "ticker": ticker,
+                                    "stage": "late",
+                                    "error": repr(_v_e)[:200],
+                                }, default=str) + "\n")
+                                log_fp.flush()
 
                         base = {
                             "ts_ms": now_ms, "ticker": ticker,
