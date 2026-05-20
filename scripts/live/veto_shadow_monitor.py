@@ -23,7 +23,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT / 'src') not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / 'src'))
 
-from kalshi_btc_engine_v2.model_veto import veto_decision  # noqa: E402
+import bisect, math
+from kalshi_btc_engine_v2.model_veto import veto_decision, model_action_decision  # noqa: E402
 
 TRIGGER_KINDS = {
     'early_trigger', 'earlier_moderate_trigger',
@@ -31,6 +32,44 @@ TRIGGER_KINDS = {
 }
 
 DEFAULT_THRESHOLD_C = 5
+DEFAULT_FLIP_THRESHOLD_C = 30
+DEFAULT_FLIP_SLIP_C = 2
+
+# BTC history extracted from prior events in the log. (ts_ms, btc_price)
+_BTC_HISTORY: list[tuple[int, float]] = []
+
+
+def _add_btc_observation(e: dict) -> None:
+    ts = e.get('ts_ms') or e.get('ts_minute_ms') or e.get('decided_at_ts_ms')
+    bp = (e.get('btc_now') or e.get('btc_price') or e.get('spot_close')
+          or e.get('cycle_open_price') or e.get('btc_price_at_entry'))
+    if ts and bp:
+        try: _BTC_HISTORY.append((int(ts), float(bp)))
+        except (TypeError, ValueError): pass
+
+
+def _vol_ann_from_history(end_ts_ms: int, window_ms: int = 300_000) -> float | None:
+    """Adaptive annualized vol from BTC observations up to end_ts_ms."""
+    if len(_BTC_HISTORY) < 5: return None
+    ts_arr = [t for t, _ in _BTC_HISTORY]
+    end_idx = bisect.bisect_right(ts_arr, end_ts_ms) - 1
+    if end_idx < 5: return None
+    start_ts = end_ts_ms - window_ms
+    start_idx = bisect.bisect_left(ts_arr, start_ts)
+    prices = [_BTC_HISTORY[i][1] for i in range(start_idx, end_idx + 1)
+              if _BTC_HISTORY[i][1] > 0]
+    if len(prices) < 3: return None
+    lrets = [math.log(prices[i+1]/prices[i]) for i in range(len(prices)-1)]
+    if not lrets: return None
+    m = sum(lrets) / len(lrets)
+    v = sum((r - m)**2 for r in lrets) / max(1, len(lrets) - 1)
+    sigma_per_sample = math.sqrt(v)
+    # average inter-arrival gives per-sec conversion
+    dt_ms = (_BTC_HISTORY[end_idx][0] - _BTC_HISTORY[start_idx][0]) / max(1, end_idx - start_idx)
+    if dt_ms <= 0: return None
+    sigma_per_sec = sigma_per_sample / math.sqrt(dt_ms / 1000)
+    sigma_ann = sigma_per_sec * math.sqrt(365 * 24 * 3600)
+    return max(0.10, min(3.0, sigma_ann))
 
 
 def _trigger_to_veto_args(event: dict) -> dict | None:
@@ -58,18 +97,25 @@ def _trigger_to_veto_args(event: dict) -> dict | None:
         price = (event.get('entry_ask_cents')
                  or event.get('fav_ask_cents')
                  or event.get('limit_cents'))
-    # Volatility: use rv_5m from trigger if available, else 0.5 default
-    # NOTE: the engine's rv_5m is sigma_per_sec_log * sqrt(60) * 100, NOT
-    # annualized. We must apply the same conversion the live trader does.
-    import math as _math
-    rv5m = event.get('rv_5m')
-    if rv5m is None or rv5m <= 0:
+    # Volatility: prefer adaptive from BTC history (matches live trader's
+    # behavior with best_effort fallback). Fall back to rv_5m from trigger,
+    # then to 0.5 default.
+    sigma: float | None = None
+    ts = event.get('ts_ms')
+    if ts:
+        sigma = _vol_ann_from_history(int(ts))
+    if sigma is None:
+        rv5m = event.get('rv_5m')
+        if rv5m is not None and rv5m > 0:
+            _factor = math.sqrt(365 * 24 * 3600) / (math.sqrt(60) * 100)  # = 7.25
+            sigma = max(0.10, min(3.0, rv5m * _factor))
+    if sigma is None:
         sigma = 0.5
-    else:
-        _factor = _math.sqrt(365 * 24 * 3600) / (_math.sqrt(60) * 100)  # = 7.25
-        sigma = max(0.10, min(3.0, rv5m * _factor))
     if not all([spot, strike, secs_to_close, side, price is not None]):
         return None
+    # Best-of-both: include yes_ask / no_ask so we can compute flip details too.
+    yes_ask = event.get('yes_ask_cents')
+    no_ask  = event.get('no_ask_cents')
     return dict(
         spot_btc=float(spot),
         strike=float(strike),
@@ -77,7 +123,11 @@ def _trigger_to_veto_args(event: dict) -> dict | None:
         sigma_annualized=float(sigma),
         engine_side=str(side),
         engine_price_cents=int(price),
-        threshold_cents=DEFAULT_THRESHOLD_C,
+        skip_threshold_cents=DEFAULT_THRESHOLD_C,
+        flip_threshold_cents=DEFAULT_FLIP_THRESHOLD_C,
+        flip_slip_cents=DEFAULT_FLIP_SLIP_C,
+        yes_ask_cents=int(yes_ask) if yes_ask is not None else None,
+        no_ask_cents=int(no_ask) if no_ask is not None else None,
     )
 
 
@@ -109,6 +159,8 @@ def tail_jsonl(path: Path, poll_interval_s: float = 1.0) -> Iterator[dict]:
 
 
 def process_event(event: dict, out_fp) -> None:
+    # Always accumulate BTC observations for adaptive RV
+    _add_btc_observation(event)
     k = event.get('kind', '')
     if k not in TRIGGER_KINDS: return
     args = _trigger_to_veto_args(event)
@@ -123,7 +175,7 @@ def process_event(event: dict, out_fp) -> None:
         out_fp.flush()
         return
     try:
-        skip, p_model, reason = veto_decision(**args)
+        action, p_model, reason, flip = model_action_decision(**args)
     except Exception as e:
         out_fp.write(json.dumps({
             'kind': 'veto_shadow_error',
@@ -143,9 +195,12 @@ def process_event(event: dict, out_fp) -> None:
         'engine_price_cents': args['engine_price_cents'],
         'sigma_used': args['sigma_annualized'],
         'p_model_yes': p_model,
-        'would_skip': skip,
+        'action': action,
+        'would_skip': action in ('SKIP', 'FLIP'),  # back-compat
+        'flip_details': flip,
         'reason': reason,
-        'threshold_cents': DEFAULT_THRESHOLD_C,
+        'skip_threshold_cents': DEFAULT_THRESHOLD_C,
+        'flip_threshold_cents': DEFAULT_FLIP_THRESHOLD_C,
     }, default=str) + '\n')
     out_fp.flush()
 
