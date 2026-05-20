@@ -206,6 +206,7 @@ def process_event(event: dict, out_fp) -> None:
 
 
 def main():
+    global DEFAULT_THRESHOLD_C, DEFAULT_FLIP_THRESHOLD_C
     ap = argparse.ArgumentParser()
     ap.add_argument('--log-in', type=str, required=True,
                     help='Live trader log to tail (jsonl)')
@@ -216,7 +217,16 @@ def main():
     ap.add_argument('--from-start', action='store_true',
                     help='Process the entire input log from the beginning, then exit.'
                          ' Useful for backtesting the shadow on historical data.')
+    ap.add_argument('--skip-threshold', type=int, default=DEFAULT_THRESHOLD_C,
+                    help=f'Disagreement threshold (cents) to fire a SKIP '
+                         f'(default {DEFAULT_THRESHOLD_C}).')
+    ap.add_argument('--flip-threshold', type=int, default=DEFAULT_FLIP_THRESHOLD_C,
+                    help=f'Disagreement threshold (cents) to fire a FLIP '
+                         f'(default {DEFAULT_FLIP_THRESHOLD_C}).')
     args = ap.parse_args()
+    # Allow CLI override of the module-level defaults
+    DEFAULT_THRESHOLD_C = args.skip_threshold
+    DEFAULT_FLIP_THRESHOLD_C = args.flip_threshold
 
     in_path = Path(args.log_in)
     out_path = Path(args.log_out)
