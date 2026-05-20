@@ -670,12 +670,22 @@ async def main_async() -> int:
     parser.add_argument("--veto-flip-slip", type=int, default=2,
                         help="Slippage in cents added to the opposite-side "
                         "ask when placing a flip order (default 2).")
+    parser.add_argument("--min-balance-cents", type=int, default=None,
+                        help="Override hard-coded MIN_BALANCE_CENTS. Pass 0 "
+                        "in --dry-run paper-trade mode to bypass the balance "
+                        "halt when the live Kalshi account is empty.")
     args = parser.parse_args()
     if args.veto_mode != "off" and not _VETO_AVAILABLE:
         print(f"[live-unified] WARNING: --veto-mode={args.veto_mode} but "
               f"model_veto import failed: {_veto_import_error}. "
               "Falling back to veto-mode=off.", flush=True)
         args.veto_mode = "off"
+    # CLI override of the hard-coded MIN_BALANCE_CENTS (useful in --dry-run
+    # when the live Kalshi account is empty/depleted).
+    if args.min_balance_cents is not None:
+        global MIN_BALANCE_CENTS  # noqa: PLW0603
+        MIN_BALANCE_CENTS = int(args.min_balance_cents)
+        print(f"[live-unified] override MIN_BALANCE_CENTS={MIN_BALANCE_CENTS}", flush=True)
 
     args.decision_log.parent.mkdir(parents=True, exist_ok=True)
     log_fp = args.decision_log.open("a", encoding="utf-8")
