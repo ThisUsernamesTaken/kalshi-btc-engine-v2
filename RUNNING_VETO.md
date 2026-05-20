@@ -110,11 +110,25 @@ Launch with `--veto-mode shadow`. Goals:
 
 ### Step 2: Per-leg live veto (DAY 2-3)
 
-Once shadow validates, switch to `--veto-mode skip` but stage by leg:
-- **First**: re-enable EARLIER_MODERATE (`--enable-earlier-moderate`) WITH veto.
-  This is the highest-value combination — EM has the biggest historical
-  losses, and the veto's strongest signal is on EM.
-- **Second** (after 1 week clean): enable LATE with veto.
+Once shadow validates, switch to `--veto-mode skip` or `--veto-mode flip`
+and stage by leg:
+
+- **First**: re-enable EARLIER_MODERATE (remove `--disable-earlier-moderate`)
+  WITH veto. This is the **highest-alpha combination** — EM has the
+  biggest historical losses, and the veto's strongest signal is on EM.
+  The current production has EM disabled (per the 2026-05-18 emergency
+  fix after a $22 bleed), but those losses were exactly the
+  exhaustion-entry trades the model flags with 87% accuracy.
+  
+  Recommended launch command for the highest-alpha config:
+  ```
+  --enable-t30-sniper --disable-late --enable-em-upsize \
+  --veto-mode flip --veto-threshold 5 --veto-flip-threshold 30
+  ```
+  (omit `--disable-earlier-moderate` so EM is active)
+
+- **Second** (after 1 week clean on EM): enable LATE with veto.
+
 - **T-30 SNIPER veto**: optional. The sniper rarely fails the veto (it
   enters when the favorite is decisively priced, which the model also
   reads as high-prob). Net effect on sniper P&L should be small.
