@@ -50,6 +50,11 @@ class BurnInConfig:
     commit_interval_s: float = 2.0
     heartbeat_interval_s: float = 60.0
     staleness_check_interval_s: float = 1.0
+    # Store full yes/no_levels_json + raw_json on DELTA events at most once per
+    # this many seconds per ticker (snapshots always keep them, so replay can
+    # rebuild books from snapshot + delta columns). 0 = store on every event
+    # (pre-2026-07 behavior; levels were 92% of DB bytes at ~65GB/day).
+    levels_snapshot_s: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +148,7 @@ class BurnInRunner:
         self.queue: asyncio.Queue[CaptureItem] = asyncio.Queue()
         self.stop_event = asyncio.Event()
         self.market_changed_event = asyncio.Event()
+        self._levels_last_stored: dict[str, float] = {}
         self.current_market_ticker: str | None = config.market_ticker
         self.stats = _Stats(started_monotonic=self.monotonic())
 
@@ -362,9 +368,18 @@ class BurnInRunner:
     ) -> bool:
         l2_event = apply_l2_payload(book, payload)
         if l2_event is not None:
-            await self.queue.put(
-                CaptureItem("kalshi_l2", "kalshi_l2_event", l2_event_to_record(l2_event))
-            )
+            record = l2_event_to_record(l2_event)
+            throttle = self.config.levels_snapshot_s
+            if throttle > 0 and l2_event.event_type != "snapshot":
+                now = self.monotonic()
+                last = self._levels_last_stored.get(l2_event.market_ticker, 0.0)
+                if now - last >= throttle:
+                    self._levels_last_stored[l2_event.market_ticker] = now
+                else:  # best bid/ask/spread + delta columns always kept
+                    record["yes_levels_json"] = None
+                    record["no_levels_json"] = None
+                    record["raw_json"] = None
+            await self.queue.put(CaptureItem("kalshi_l2", "kalshi_l2_event", record))
             return False
         msg = payload.get("msg") or payload
         event_type = str(payload.get("type") or msg.get("type") or "").lower()

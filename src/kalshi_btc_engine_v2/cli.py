@@ -205,6 +205,40 @@ def command_print_ddl(_: argparse.Namespace) -> int:
     return 0
 
 
+def _expand_db_date(db: Path) -> Path:
+    """Expand a literal '{date}' token in the db filename to today's UTC date.
+    With --hours 24 + NSSM auto-restart this yields one DB file per day."""
+    from datetime import datetime, timezone
+
+    if "{date}" in str(db):
+        return Path(str(db).replace("{date}", datetime.now(timezone.utc).strftime("%Y%m%d")))
+    return db
+
+
+def _apply_retention(db: Path, days: float) -> None:
+    """Delete sibling dated capture DBs (+sidecars) older than ``days``.
+    Only touches files matching the dated pattern burnin_*.sqlite whose mtime
+    is beyond the horizon — never the file we are about to write."""
+    import time as _time
+
+    if days <= 0:
+        return
+    horizon = _time.time() - days * 86400
+    for p in db.parent.glob("burnin_*.sqlite"):
+        if p.resolve() == db.resolve():
+            continue
+        try:
+            if p.stat().st_mtime < horizon:
+                for side in ("", "-wal", "-shm"):
+                    f = Path(str(p) + side)
+                    if f.exists():
+                        sz = f.stat().st_size
+                        f.unlink()
+                        print(f"[capture-burnin] retention: deleted {f} ({sz/1e9:.1f}GB)")
+        except OSError as ex:
+            print(f"[capture-burnin] retention: skip {p}: {ex}")
+
+
 def command_capture_burnin(args: argparse.Namespace) -> int:
     resolved = _resolve_kalshi_creds_into_env()
     if not resolved:
@@ -214,10 +248,15 @@ def command_capture_burnin(args: argparse.Namespace) -> int:
         )
     else:
         print("[capture-burnin] using Kalshi credentials from environment")
+    db = _expand_db_date(args.db)
+    print(f"[capture-burnin] db={db} levels_snapshot_s={args.levels_snapshot_s} "
+          f"retention_days={args.retention_days}")
+    _apply_retention(db, args.retention_days)
     config = BurnInConfig(
-        db_path=args.db,
+        db_path=db,
         hours=args.hours,
         market_ticker=args.market_ticker,
+        levels_snapshot_s=args.levels_snapshot_s,
     )
     asyncio.run(BurnInRunner(config).run())
     return 0
@@ -749,6 +788,16 @@ def build_parser() -> argparse.ArgumentParser:
     burnin_parser.add_argument("--hours", required=True, type=float, help="Burn-in duration")
     burnin_parser.add_argument(
         "--market-ticker", help="Optional KXBTC15M ticker override instead of discovery"
+    )
+    burnin_parser.add_argument(
+        "--levels-snapshot-s", type=float, default=0.0,
+        help="Store full levels/raw json on deltas at most once per N seconds per "
+             "ticker (0 = every event). Best bid/ask/spread always stored.",
+    )
+    burnin_parser.add_argument(
+        "--retention-days", type=float, default=0.0,
+        help="On startup delete sibling dated burnin_*.sqlite files older than N days "
+             "(0 = keep everything).",
     )
     burnin_parser.set_defaults(func=command_capture_burnin)
 
