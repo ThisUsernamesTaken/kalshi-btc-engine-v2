@@ -46,3 +46,6 @@ dist/
 # not be committed.
 /_*.py
 /scratch_*.py
+
+# Local decision logs and real-money trade history
+data_local/

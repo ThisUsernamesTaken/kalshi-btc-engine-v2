@@ -73,9 +73,16 @@ never blocks trading on its own bugs.
 
 ## Operational invariants
 
-1. **Decision log is at** `data/live_veto_flip_EM_trades.jsonl`. Combined
-   stdout/stderr at `data/live_veto_flip_EM.combined.log`. Watchdog
-   restart log at `data/watchdog_live_veto_flip_EM.log`.
+1. **Decision log paths**:
+   - **Live engine** (initial run): `data/live_veto_flip_EM_trades.jsonl`
+   - **Live engine** (via current watchdog .cmd): `data_local/live_veto_flip_EM_trades.jsonl`
+   - **Paper variants** (current): `data_local/paper_*_trades.jsonl`
+   - Combined stdout/stderr alongside, `*.combined.log`
+   - Watchdog restart logs: `*watchdog_*.log`
+
+   The `data_local/` folder was introduced 2026-05-20 to keep the
+   concurrent paper variants and re-launched live trader separate from
+   the historical `data/` logs.
 2. **Account balance** halts the trader below $1 (`MIN_BALANCE_CENTS = 100`).
 3. **Daily loss cap** `DAILY_LOSS_CAP_CENTS = 2700` ($27). Halts trading
    when cumulative day-floor loss reaches this. Reset at UTC day floor.

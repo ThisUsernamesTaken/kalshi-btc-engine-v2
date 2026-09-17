@@ -18,9 +18,9 @@ set ENGINE_DIR=C:\Trading\kalshi-btc-engine-v2
 set PY=C:\Users\coleb\AppData\Local\Python\bin\python.exe
 set PYTHONPATH=%ENGINE_DIR%\src
 set PYTHONIOENCODING=utf-8
-set DECISION_LOG=%ENGINE_DIR%\data\engine_v3_paper_decisions.jsonl
-set LOG_FILE=%ENGINE_DIR%\data\engine_v3_paper.combined.log
-set WATCHDOG_LOG=%ENGINE_DIR%\data\watchdog_engine_v3_paper.log
+set DECISION_LOG=%ENGINE_DIR%\data_local\engine_v3_paper_decisions.jsonl
+set LOG_FILE=%ENGINE_DIR%\data_local\engine_v3_paper.combined.log
+set WATCHDOG_LOG=%ENGINE_DIR%\data_local\watchdog_engine_v3_paper.log
 
 REM Mode: shadow (compares against production trader's log)
 REM Sizing: backtest prior + Bayesian sizing (quarter-Kelly)

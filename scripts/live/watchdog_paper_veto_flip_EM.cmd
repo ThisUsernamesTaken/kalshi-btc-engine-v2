@@ -15,9 +15,9 @@ set ENGINE_DIR=C:\Trading\kalshi-btc-engine-v2
 set PY=C:\Users\coleb\AppData\Local\Python\bin\python.exe
 set PYTHONPATH=%ENGINE_DIR%\src
 set PYTHONIOENCODING=utf-8
-set DECISION_LOG=%ENGINE_DIR%\data\paper_veto_flip_EM_trades.jsonl
-set LOG_FILE=%ENGINE_DIR%\data\paper_veto_flip_EM.combined.log
-set WATCHDOG_LOG=%ENGINE_DIR%\data\watchdog_paper_veto_flip_EM.log
+set DECISION_LOG=%ENGINE_DIR%\data_local\paper_veto_flip_EM_trades.jsonl
+set LOG_FILE=%ENGINE_DIR%\data_local\paper_veto_flip_EM.combined.log
+set WATCHDOG_LOG=%ENGINE_DIR%\data_local\watchdog_paper_veto_flip_EM.log
 REM EM ENABLED (no --disable-earlier-moderate) + T-30 sniper + EM upsize
 set SMART_V5_FLAGS=--enable-t30-sniper --disable-late --enable-em-upsize
 

@@ -11,9 +11,9 @@ set ENGINE_DIR=C:\Trading\kalshi-btc-engine-v2
 set PY=C:\Users\coleb\AppData\Local\Python\bin\python.exe
 set PYTHONPATH=%ENGINE_DIR%\src
 set PYTHONIOENCODING=utf-8
-set DECISION_LOG=%ENGINE_DIR%\data\paper_veto_skip_trades.jsonl
-set LOG_FILE=%ENGINE_DIR%\data\paper_veto_skip.combined.log
-set WATCHDOG_LOG=%ENGINE_DIR%\data\watchdog_paper_veto_skip.log
+set DECISION_LOG=%ENGINE_DIR%\data_local\paper_veto_skip_trades.jsonl
+set LOG_FILE=%ENGINE_DIR%\data_local\paper_veto_skip.combined.log
+set WATCHDOG_LOG=%ENGINE_DIR%\data_local\watchdog_paper_veto_skip.log
 set SMART_V5_FLAGS=--disable-earlier-moderate --enable-t30-sniper --disable-late --enable-em-upsize
 
 :loop

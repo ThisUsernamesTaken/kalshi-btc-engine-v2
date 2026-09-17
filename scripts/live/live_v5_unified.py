@@ -536,6 +536,12 @@ async def fetch_floor_strike(client: KalshiClient, ticker: str) -> float | None:
 
 # ── IOC order helper ──────────────────────────────────────────────────────
 
+# Pre-submit REST snapshot config. Set by main_async() after argparse.
+# When None or {"mode": "off"}, place_ioc behaves exactly as pre-patch
+# (full backward compatibility). Module-level by design so the patch
+# touches zero call sites — only the helper itself.
+_PRESUBMIT_REST_CFG: dict | None = None
+
 
 async def place_ioc(
     client: KalshiClient, ticker: str, side: str, count: int, limit_cents: int,
@@ -549,6 +555,48 @@ async def place_ioc(
 
     if dry_run:
         return count, limit_cents, "DRY-RUN"
+
+    # ── Pre-submit REST snapshot (shadow / active) ─────────────────────────
+    # Fail-safe: any error in this block logs presubmit_rest_error and falls
+    # through to the original submit. Never skip due to a check failure.
+    _cfg = _PRESUBMIT_REST_CFG
+    if _cfg is not None and _cfg.get("mode", "off") != "off":
+        _t0 = time.time()
+        try:
+            _book = await asyncio.wait_for(
+                client.get_orderbook(ticker),
+                timeout=float(_cfg.get("timeout_s", 0.1)),
+            )
+            _rest_ask = _book.best_yes_ask if side == "yes" else _book.best_no_ask
+            _delta = _rest_ask - limit_cents
+            _phantom = _delta > int(_cfg.get("threshold_c", 0))
+            log_fp.write(json.dumps({
+                **base_rec, "kind": "presubmit_rest_check",
+                "mode": _cfg["mode"], "rest_ask_c": _rest_ask,
+                "limit_c": limit_cents, "delta_c": _delta,
+                "phantom": _phantom, "would_abstain": _phantom,
+                "latency_ms": int((time.time() - _t0) * 1000),
+            }, default=str) + "\n")
+            log_fp.flush()
+            if _cfg["mode"] == "active" and _phantom:
+                log_fp.write(json.dumps({
+                    **base_rec, "kind": "order_abstain",
+                    "reason_code": "PRESUBMIT_REST_PHANTOM",
+                    "rest_ask_c": _rest_ask, "limit_c": limit_cents,
+                    "delta_c": _delta,
+                }, default=str) + "\n")
+                log_fp.flush()
+                return 0, 0, None
+        except Exception as _e:  # noqa: BLE001
+            log_fp.write(json.dumps({
+                **base_rec, "kind": "presubmit_rest_error",
+                "mode": _cfg.get("mode", "?"),
+                "error": repr(_e)[:200],
+                "latency_ms": int((time.time() - _t0) * 1000),
+            }, default=str) + "\n")
+            log_fp.flush()
+            # FAIL-SAFE: fall through and submit anyway.
+    # ───────────────────────────────────────────────────────────────────────
 
     try:
         order = await client.place_order(
@@ -670,6 +718,21 @@ async def main_async() -> int:
     parser.add_argument("--veto-flip-slip", type=int, default=2,
                         help="Slippage in cents added to the opposite-side "
                         "ask when placing a flip order (default 2).")
+    parser.add_argument("--presubmit-rest-mode", choices=("off", "shadow", "active"),
+                        default="off",
+                        help="Pre-submit REST orderbook snapshot. "
+                        "'off' = unchanged behavior (default). "
+                        "'shadow' = compute and log presubmit_rest_check but "
+                        "always submit. 'active' = abstain when REST ask "
+                        "exceeds limit by more than --presubmit-rest-threshold "
+                        "cents.")
+    parser.add_argument("--presubmit-rest-threshold", type=int, default=0,
+                        help="Abstain when (rest_ask - limit_cents) > "
+                        "threshold_cents in active mode. Default 0 = any "
+                        "phantom triggers abstain.")
+    parser.add_argument("--presubmit-rest-timeout-s", type=float, default=0.1,
+                        help="Hard timeout for the REST snapshot call. "
+                        "Default 0.1s = 100ms. Timeouts fall through to submit.")
     parser.add_argument("--min-balance-cents", type=int, default=None,
                         help="Override hard-coded MIN_BALANCE_CENTS. Pass 0 "
                         "in --dry-run paper-trade mode to bypass the balance "
@@ -680,6 +743,18 @@ async def main_async() -> int:
               f"model_veto import failed: {_veto_import_error}. "
               "Falling back to veto-mode=off.", flush=True)
         args.veto_mode = "off"
+
+    # Wire up the module-level presubmit-rest config (see place_ioc).
+    global _PRESUBMIT_REST_CFG  # noqa: PLW0603
+    _PRESUBMIT_REST_CFG = {
+        "mode": args.presubmit_rest_mode,
+        "threshold_c": int(args.presubmit_rest_threshold),
+        "timeout_s": float(args.presubmit_rest_timeout_s),
+    }
+    if args.presubmit_rest_mode != "off":
+        print(f"[live-unified] presubmit-rest mode={args.presubmit_rest_mode} "
+              f"threshold={args.presubmit_rest_threshold}c "
+              f"timeout={args.presubmit_rest_timeout_s}s", flush=True)
     # CLI override of the hard-coded MIN_BALANCE_CENTS (useful in --dry-run
     # when the live Kalshi account is empty/depleted).
     if args.min_balance_cents is not None:

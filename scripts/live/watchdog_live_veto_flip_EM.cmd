@@ -24,15 +24,20 @@ set ENGINE_DIR=C:\Trading\kalshi-btc-engine-v2
 set PY=C:\Users\coleb\AppData\Local\Python\bin\python.exe
 set PYTHONPATH=%ENGINE_DIR%\src
 set PYTHONIOENCODING=utf-8
-set DECISION_LOG=%ENGINE_DIR%\data\live_veto_flip_EM_trades.jsonl
-set LOG_FILE=%ENGINE_DIR%\data\live_veto_flip_EM.combined.log
-set WATCHDOG_LOG=%ENGINE_DIR%\data\watchdog_live_veto_flip_EM.log
+set DECISION_LOG=%ENGINE_DIR%\data_local\live_veto_flip_EM_trades.jsonl
+set LOG_FILE=%ENGINE_DIR%\data_local\live_veto_flip_EM.combined.log
+set WATCHDOG_LOG=%ENGINE_DIR%\data_local\watchdog_live_veto_flip_EM.log
 
 REM EM ENABLED + T-30 sniper + EM upsize. No --disable-earlier-moderate.
 REM No --dry-run (this is LIVE).
 set ENGINE_FLAGS=--enable-t30-sniper --disable-late --enable-em-upsize
 
 set VETO_FLAGS=--veto-mode flip --veto-threshold 5 --veto-flip-threshold 30 --veto-flip-slip 2
+
+REM Phase 1 SHADOW: compute presubmit-rest check on every IOC, log result, but
+REM never skip. After 1-2h shadow validation confirms phantom prediction
+REM correlates with no_fill, flip mode below to "active".
+set PRESUBMIT_FLAGS=--presubmit-rest-mode shadow --presubmit-rest-threshold 0 --presubmit-rest-timeout-s 0.1
 
 :loop
 echo [%date% %time%] starting live_veto_flip_EM (LIVE) >> "%WATCHDOG_LOG%"
@@ -43,6 +48,7 @@ echo [%date% %time%] starting live_veto_flip_EM (LIVE) >> "%WATCHDOG_LOG%"
     --no-resting ^
     %ENGINE_FLAGS% ^
     %VETO_FLAGS% ^
+    %PRESUBMIT_FLAGS% ^
     >> "%LOG_FILE%" 2>&1
 echo [%date% %time%] live_veto_flip_EM exited with %ERRORLEVEL%; restarting in 5s >> "%WATCHDOG_LOG%"
 timeout /t 5 /nobreak > nul
